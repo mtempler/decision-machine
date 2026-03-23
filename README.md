@@ -24,7 +24,11 @@ Upload a time-series CSV  →  Review in the plot viewer  →  Submit for SML pr
 
 |Dashboard|Job Plot|Measurements|
 |-|-|-|
+<<<<<<< HEAD
 |!\[Dashboard](doc/screenshots/dashboard.png)|!\[Job Plot](doc/screenshots/job-plot.png)|!\[Measurements](doc/screenshots/measurements.png)|
+=======
+|!\[Dashboard](docs/screenshots/dashboard.png)|!\[Job Plot](doc/screenshots/job-plot.png)|!\[Measurements](doc/screenshots/measurements.png)|
+>>>>>>> 260ac972ad8a2e09d24af89049dbb5651cddfbad
 
 \---
 
