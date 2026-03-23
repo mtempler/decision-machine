@@ -175,9 +175,10 @@ Decision Machine is a three-layer platform. Contributors can build agents at any
 
 ![Functional Architecture](docs/architecture.png)
 
-- **Measurement Agents** — collect and deliver time-series data into the platform
-- **Control Agents** — execute demand and supply actions driven by DM output
-- **Decision Agents** — consume Decision Machine reports to drive automated decisions
+- **Measurement Agents** — feed time-series into the Precision Insight (Scientific ML) layer, which handles state calculation, trajectory planning, and trajectory control
+- **Decision Machine** — sits above that, producing decisions around levels, risk, and allocation
+- **Control Agents** — execute user control actions on the demand and supply levers
+- **Decision Agents** — sit at the top, consuming DM output to drive automated decisions
 
 The SML-App in this repository is the reference presentation layer. Anything is permitted to replace it.
 
