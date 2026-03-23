@@ -105,7 +105,7 @@ else:
 # ── Syntax check ──────────────────────────────────────
 for f in ['server.py', 'launcher.py']:
     try:
-        with open(f) as fh:
+        with open(f, encoding='utf-8') as fh:
             ast.parse(fh.read())
         ok(f'SYNTAX-{f}', f'{f} syntax valid')
     except SyntaxError as e:
