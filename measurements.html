@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SML — Measurements</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06090f;
+    --surface: #0d1420;
+    --surface2: #111927;
+    --border: #1e2d45;
+    --border2: #253650;
+    --blue: #2e7eff;
+    --blue-dim: #1a5abf;
+    --blue-glow: rgba(46,126,255,0.15);
+    --blue-subtle: rgba(46,126,255,0.07);
+    --text: #e8edf5;
+    --text-dim: #8a9ab5;
+    --text-faint: #4a5c78;
+    --accent: #5b9fff;
+    --green: #2de8a0;
+    --red: #ff4d6a;
+    --amber: #ffb347;
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+
+  :root.light {
+    --bg: #f0f4fb;
+    --surface: #ffffff;
+    --surface2: #e8eef8;
+    --border: #d0daea;
+    --border2: #b8c8df;
+    --blue: #1a6ef5;
+    --blue-dim: #1458cc;
+    --blue-glow: rgba(26,110,245,0.12);
+    --blue-subtle: rgba(26,110,245,0.07);
+    --text: #0f1b2d;
+    --text-dim: #4a6080;
+    --text-faint: #8a9eb8;
+    --accent: #1a6ef5;
+    --green: #0ea572;
+    --red: #e8273f;
+    --amber: #d97706;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 500px;
+    background: radial-gradient(ellipse, rgba(46,126,255,0.07) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* HEADER */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(6,9,15,0.88); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); padding: 0 40px;
+  }
+  :root.light header { background: rgba(240,244,251,0.92); }
+  .header-inner {
+    max-width: 1400px; margin: 0 auto;
+    display: flex; align-items: center; gap: 16px; height: 64px;
+  }
+  .back-btn {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-dim); text-decoration: none;
+    font-size: 14px; transition: color 0.2s;
+    background: none; border: none; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    padding: 6px 10px; border-radius: 6px;
+    border: 1px solid transparent;
+  }
+  .back-btn:hover { color: var(--text); border-color: var(--border); }
+  .back-btn svg { width: 16px; height: 16px; }
+  .header-divider { width: 1px; height: 20px; background: var(--border); }
+  .header-info { display: flex; flex-direction: column; gap: 1px; }
+  .header-title { font-family: 'DM Serif Display', serif; font-size: 18px; }
+  .header-sub { font-size: 12px; color: var(--text-faint); }
+  .logo {
+    margin-left: auto;
+    font-family: 'DM Serif Display', serif; font-size: 18px;
+    color: var(--text-dim); text-decoration: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--blue); box-shadow: 0 0 10px var(--blue);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 8px var(--blue); }
+    50% { box-shadow: 0 0 20px var(--blue); }
+  }
+
+  /* MAIN */
+  main {
+    max-width: 1400px; margin: 0 auto;
+    padding: 40px 40px 80px;
+    position: relative; z-index: 1;
+  }
+
+  /* CONTROLS */
+  .controls-bar {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 28px; flex-wrap: wrap;
+  }
+  .control-group { display: flex; flex-direction: column; gap: 6px; }
+  .control-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+  .select-wrap { position: relative; }
+  .select-wrap select {
+    appearance: none;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 36px 9px 14px;
+    color: var(--text); font-size: 14px; font-family: 'DM Sans', sans-serif;
+    cursor: pointer; outline: none; min-width: 200px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .select-wrap select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glow); }
+  .select-wrap::after {
+    content: '';
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    border: 5px solid transparent; border-top-color: var(--text-dim);
+    margin-top: 3px; pointer-events: none;
+  }
+
+  .series-toggles { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .series-toggle {
+    padding: 8px 14px; border-radius: 100px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text-dim); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.2s;
+    font-family: 'DM Mono', monospace;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .series-toggle .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .series-toggle.active { background: var(--blue-subtle); border-color: var(--blue); color: var(--accent); }
+  .series-toggle:hover:not(.active) { border-color: var(--border2); color: var(--text); }
+
+  /* CHART AREA */
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px 28px 20px;
+    margin-bottom: 28px;
+    position: relative; overflow: hidden;
+  }
+  .chart-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--blue), #5b9fff, transparent);
+  }
+  .chart-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
+  .chart-title { font-family: 'DM Serif Display', serif; font-size: 20px; }
+  .chart-meta { font-size: 12px; color: var(--text-faint); font-family: 'DM Mono', monospace; margin-top: 4px; }
+
+  .chart-container { position: relative; height: 360px; width: 100%; }
+  canvas { position: absolute; inset: 0; }
+
+  /* STATS CARDS */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px; margin-bottom: 28px;
+  }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 8px; }
+  .stat-card-value { font-family: 'DM Mono', monospace; font-size: 24px; font-weight: 500; color: var(--text); }
+  .stat-card-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+  /* DATA TABLE */
+  .table-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .table-header {
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .table-header h3 { font-size: 15px; font-weight: 600; }
+  .table-header span { font-size: 12px; color: var(--text-faint); font-family: 'DM Mono', monospace; }
+  .table-wrap { overflow-x: auto; max-height: 400px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 12px 20px; text-align: left;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-faint); background: var(--surface2);
+    position: sticky; top: 0; z-index: 1;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 11px 20px; font-size: 13px;
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    font-family: 'DM Mono', monospace;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(46,126,255,0.04); }
+  .date-col { color: var(--text-dim); }
+  .num-col { color: var(--text); }
+
+  /* Loading */
+  .loading {
+    display: flex; align-items: center; justify-content: center;
+    height: 300px; color: var(--text-faint);
+    flex-direction: column; gap: 12px;
+  }
+  .spinner {
+    width: 36px; height: 36px; border: 2px solid var(--border);
+    border-top-color: var(--blue); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-page {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 60vh; flex-direction: column; gap: 16px;
+    color: var(--text-dim); text-align: center;
+  }
+  .error-page h2 { font-family: 'DM Serif Display', serif; font-size: 28px; }
+
+  /* Tooltip */
+  .chart-tooltip {
+    position: fixed; z-index: 999;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); padding: 10px 14px;
+    font-size: 12px; pointer-events: none; opacity: 0;
+    transition: opacity 0.15s; min-width: 140px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .chart-tooltip.visible { opacity: 1; }
+  .tooltip-date { color: var(--text-faint); font-family: 'DM Mono', monospace; margin-bottom: 6px; font-size: 11px; }
+  .tooltip-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .tooltip-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .tooltip-label { color: var(--text-dim); flex: 1; }
+  .tooltip-val { color: var(--text); font-family: 'DM Mono', monospace; font-weight: 500; }
+
+  .customer-id-badge {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); font-size: 12px; font-weight: 500;
+    font-family: 'DM Mono', monospace;
+    max-width: 160px; overflow: hidden; cursor: default;
+  }
+  .customer-id-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  @media (max-width: 768px) {
+    header { padding: 0 16px; }
+    main { padding: 20px 16px 60px; }
+    .chart-container { height: 260px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <button class="back-btn" onclick="window.location.href='index.html'">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Dashboard
+    </button>
+    <div class="header-divider"></div>
+    <div class="header-info">
+      <div class="header-title" id="headerTitle">Loading…</div>
+      <div class="header-sub" id="headerSub"></div>
+    </div>
+    <a href="index.html" class="logo"><span class="logo-dot"></span>SML</a>
+    <div class="customer-id-badge" id="customerIdBadge" style="display:none;">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      <span id="customerIdLabel"></span>
+    </div>
+    <button class="back-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode" style="margin-left:8px;padding:6px 10px;">
+      <span id="themeIcon"></span>
+    </button>
+  </div>
+</header>
+
+<main id="mainContent">
+  <div class="loading"><div class="spinner"></div><span>Loading measurements…</span></div>
+</main>
+
+<div class="chart-tooltip" id="chartTooltip"></div>
+
+<script>
+// ── LOAD VIEW ──────────────────────────────────────────────────────
+const params       = new URLSearchParams(window.location.search);
+const viewId       = params.get('view');
+const initSeriesId = params.get('series');
+
+let currentView  = null;
+let activeSeries = null;
+let activeHeader = null;
+let seriesData   = {};
+let loadedSid    = null;
+
+const SERIES_COLORS = ['#2e7eff','#2de8a0','#ffb347','#ff6b9d','#a78bfa','#38bdf8','#fb923c'];
+
+async function init() {
+  if (!viewId) { showError('No view specified.'); return; }
+  try {
+    const views = await fetch('/api/views').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    currentView = views.find(v => v.id === viewId);
+  } catch(e) { showError('Could not connect to server.'); return; }
+  if (!currentView)                    { showError('View not found.'); return; }
+  if (currentView.series.length === 0) { showError('No series data in this view.'); return; }
+
+  document.getElementById('headerTitle').textContent = currentView.title;
+  document.getElementById('headerSub').textContent   = currentView.category;
+  document.title = 'SML — ' + currentView.title;
+
+  const defaultSeries = initSeriesId
+    ? (currentView.series.find(s => s.id === initSeriesId) || currentView.series[0])
+    : currentView.series[0];
+  activeSeries = defaultSeries.id;
+  activeHeader = defaultSeries.headers[1];
+
+  await loadSeriesData(activeSeries);
+  renderPage();
+}
+
+async function loadSeriesData(sid) {
+  if (loadedSid === sid) return;
+  document.getElementById('mainContent').innerHTML =
+    '<div class="loading"><div class="spinner"></div><span>Loading data…</span></div>';
+  try {
+    const res = await fetch('/api/views/' + viewId + '/series/' + sid + '/csv');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    seriesData = parseCSV(text);
+    loadedSid  = sid;
+  } catch(e) { showError('Failed to load series: ' + e.message); throw e; }
+}
+
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let i = 0, n = text.length;
+  while (i < n) {
+    const row = [];
+    while (i < n && (text[i] === '\r' || text[i] === '\n')) i++;
+    if (i >= n) break;
+    while (i < n) {
+      let field = '';
+      if (text[i] === '"') {
+        i++;
+        while (i < n) {
+          if (text[i] === '"' && text[i+1] === '"') { field += '"'; i += 2; }
+          else if (text[i] === '"') { i++; break; }
+          else { field += text[i++]; }
+        }
+        while (i < n && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') i++;
+      } else {
+        while (i < n && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') { field += text[i++]; }
+      }
+      row.push(field.trim());
+      if (i < n && text[i] === ',') { i++; } else break;
+    }
+    while (i < n && (text[i] === '\r' || text[i] === '\n')) i++;
+    if (row.length === 0 || row.every(f => f === '')) continue;
+    rows.push(row);
+  }
+  if (rows.length < 2) throw new Error('CSV has no data rows.');
+  const headers  = rows[0];
+  const dataHdrs = headers.slice(1);
+  const dates    = [];
+  const data     = {};
+  dataHdrs.forEach(h => data[h] = []);
+  for (let r = 1; r < rows.length; r++) {
+    const cols = rows[r];
+    while (cols.length < headers.length) cols.push('');
+    dates.push(cols[0]);
+    dataHdrs.forEach((h, j) => data[h].push(parseFloat(cols[j+1]) || 0));
+  }
+  return { dates, data, headers };
+}
+
+
+function renderPage() {
+  const main = document.getElementById('mainContent');
+
+  // Build all unique data headers across all series
+  const allHeaders = [];
+  const headerSeriesMap = {}; // header -> [series id]
+  currentView.series.forEach(s => {
+    s.headers.slice(1).forEach(h => {
+      if (!headerSeriesMap[h]) { headerSeriesMap[h] = []; allHeaders.push(h); }
+      headerSeriesMap[h].push(s.id);
+    });
+  });
+
+  // Get current series
+  const curSeries = currentView.series.find(s => s.id === activeSeries) || currentView.series[0];
+  const curData   = (seriesData.data && seriesData.data[activeHeader]) || [];
+  const curDates  = seriesData.dates || [];
+
+  // Stats
+  const min = Math.min(...curData);
+  const max = Math.max(...curData);
+  const avg = curData.reduce((a,b) => a+b, 0) / curData.length;
+  const last = curData[curData.length - 1];
+  const first = curData[0];
+  const change = last - first;
+  const changePct = ((change / Math.abs(first)) * 100);
+
+  main.innerHTML = `
+    <!-- Controls -->
+    <div class="controls-bar">
+      <div class="control-group">
+        <div class="control-label">Measurement</div>
+        <div class="select-wrap">
+          <select id="headerSelect" onchange="changeHeader(this.value)">
+            ${getAllDataHeaders().map(({key, label}) => `<option value="${escHtml(key)}" ${key === activeHeader ? 'selected' : ''}>${escHtml(label)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="control-group">
+        <div class="control-label">Source File</div>
+        <div class="select-wrap">
+          <select id="seriesSelect" onchange="changeSeries(this.value)">
+            ${getSeriesForHeader(activeHeader).map(s => `<option value="${s.id}" ${s.id === activeSeries ? 'selected' : ''}>${s.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">${escHtml(getLabelForKey(activeHeader))}</div>
+          <div class="chart-meta">${curSeries.name} · ${curDates[0]} → ${curDates[curDates.length-1]} · ${curData.length} data points</div>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="mainChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-card-label">Latest</div>
+        <div class="stat-card-value">${fmt(last)}</div>
+        <div class="stat-card-sub">${curDates[curDates.length-1]}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Change</div>
+        <div class="stat-card-value" style="color:${change >= 0 ? 'var(--green)' : 'var(--red)'}">${change >= 0 ? '+' : ''}${fmt(change)}</div>
+        <div class="stat-card-sub">${changePct >= 0 ? '+' : ''}${changePct.toFixed(1)}% total</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Average</div>
+        <div class="stat-card-value">${fmt(avg)}</div>
+        <div class="stat-card-sub">over ${curData.length} points</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Min</div>
+        <div class="stat-card-value">${fmt(min)}</div>
+        <div class="stat-card-sub">lowest value</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Max</div>
+        <div class="stat-card-value">${fmt(max)}</div>
+        <div class="stat-card-sub">highest value</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Length</div>
+        <div class="stat-card-value">${curData.length}</div>
+        <div class="stat-card-sub">data points</div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h3>Raw Data</h3>
+        <span>${curDates.length} rows</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Date</th>
+            <th>${escHtml(getLabelForKey(activeHeader))}</th>
+          </tr></thead>
+          <tbody>
+            ${curDates.map((d, i) => `
+              <tr>
+                <td class="date-col">${d}</td>
+                <td class="num-col">${curData[i]}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  drawChart(curDates, curData, activeHeader);
+}
+
+// Returns array of {key, label} for the Measurement dropdown.
+// key   = CSV column name (used for data lookup)
+// label = corresponding entry from s.header comma-delimited list (falls back to key)
+function getAllDataHeaders() {
+  const seen = new Set();
+  const result = [];
+  currentView.series.forEach(s => {
+    const csvCols  = s.headers.slice(1); // e.g. ["Weight_kg","BodyFat_pct"]
+    const labelStr = (s.header || '').trim();
+    const labels   = labelStr
+      ? labelStr.split(',').map(l => l.trim()).filter(Boolean)
+      : [];
+    csvCols.forEach((key, i) => {
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push({ key, label: labels[i] || key });
+      }
+    });
+  });
+  return result;
+}
+
+function getSeriesForHeader(key) {
+  return currentView.series.filter(s => s.headers.slice(1).includes(key));
+}
+
+// Lookup display label for the currently active header key
+function getLabelForKey(key) {
+  for (const s of currentView.series) {
+    const csvCols = s.headers.slice(1);
+    const idx = csvCols.indexOf(key);
+    if (idx >= 0) {
+      const labelStr = (s.header || '').trim();
+      const labels = labelStr ? labelStr.split(',').map(l => l.trim()).filter(Boolean) : [];
+      if (labels[idx]) return labels[idx];
+    }
+  }
+  return key;
+}
+
+async function changeHeader(header) {
+  activeHeader = header;
+  const matching = getSeriesForHeader(header);
+  if (matching.length > 0 && !matching.find(s => s.id === activeSeries)) {
+    activeSeries = matching[0].id;
+  }
+  await loadSeriesData(activeSeries);
+  renderPage();
+}
+
+async function changeSeries(seriesId) {
+  activeSeries = seriesId;
+  await loadSeriesData(seriesId);
+  renderPage();
+}
+
+// ── CHART ─────────────────────────────────────────────
+function drawChart(dates, values, label) {
+  const canvas = document.getElementById('mainChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  // Resize canvas to container
+  const container = canvas.parentElement;
+  canvas.width = container.offsetWidth * window.devicePixelRatio;
+  canvas.height = container.offsetHeight * window.devicePixelRatio;
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const W = container.offsetWidth;
+  const H = container.offsetHeight;
+
+  const PAD = { top: 20, right: 72, bottom: 50, left: 60 };
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top - PAD.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const range = maxV - minV || 1;
+  const padV = range * 0.1;
+  const yMin = minV - padV;
+  const yMax = maxV + padV;
+
+  function xPos(i) { return PAD.left + (i / (values.length - 1)) * cW; }
+  function yPos(v) { return PAD.top + cH - ((v - yMin) / (yMax - yMin)) * cH; }
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(30,45,69,0.8)';
+  ctx.lineWidth = 1;
+  const yTicks = 5;
+  ctx.textAlign = 'right';
+  ctx.font = `400 11px "DM Mono", monospace`;
+  ctx.fillStyle = '#4a5c78';
+  for (let i = 0; i <= yTicks; i++) {
+    const v = yMin + (yMax - yMin) * (i / yTicks);
+    const y = yPos(v);
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, y);
+    ctx.lineTo(PAD.left + cW, y);
+    ctx.stroke();
+    ctx.fillText(fmt(v), PAD.left - 8, y + 4);
+  }
+
+  // X axis labels
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#4a5c78';
+  const xTickCount = Math.min(8, dates.length);
+  for (let i = 0; i < xTickCount; i++) {
+    const idx = Math.round((i / (xTickCount - 1)) * (dates.length - 1));
+    const x = xPos(idx);
+    ctx.fillText(dates[idx].slice(5), x, H - PAD.bottom + 18); // MM-DD
+  }
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + cH);
+  grad.addColorStop(0, 'rgba(46,126,255,0.25)');
+  grad.addColorStop(1, 'rgba(46,126,255,0)');
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = xPos(i), y = yPos(v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo(xPos(values.length - 1), PAD.top + cH);
+  ctx.lineTo(xPos(0), PAD.top + cH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = '#2e7eff';
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  values.forEach((v, i) => {
+    const x = xPos(i), y = yPos(v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Dots at first and last
+  [0, values.length - 1].forEach(i => {
+    ctx.beginPath();
+    ctx.arc(xPos(i), yPos(values[i]), 5, 0, Math.PI*2);
+    ctx.fillStyle = '#2e7eff';
+    ctx.fill();
+    ctx.strokeStyle = '#06090f';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+
+  // Running average
+  const runAvg = values.map((_, i) => {
+    const slice = values.slice(0, i + 1);
+    return slice.reduce((a, b) => a + b, 0) / slice.length;
+  });
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(255,179,71,0.85)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 3]);
+  ctx.lineJoin = 'round';
+  runAvg.forEach((v, i) => {
+    const x = xPos(i), y = yPos(v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Label at final point
+  ctx.textAlign = 'left';
+  ctx.font = '500 10px "DM Mono", monospace';
+  ctx.fillStyle = 'rgba(255,179,71,0.9)';
+  ctx.fillText(`avg ${fmt(runAvg[runAvg.length - 1])}`, PAD.left + cW + 4, yPos(runAvg[runAvg.length - 1]) + 4);
+
+  const tooltip = document.getElementById('chartTooltip');
+  let lastI = -1;
+
+  function onMouseMove(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    if (mx < PAD.left || mx > W - PAD.right || my < PAD.top || my > H - PAD.bottom) {
+      tooltip.classList.remove('visible');
+      lastI = -1;
+      return;
+    }
+
+    const idx = Math.round(((mx - PAD.left) / cW) * (values.length - 1));
+    const clampedIdx = Math.max(0, Math.min(values.length - 1, idx));
+
+    if (clampedIdx !== lastI) {
+      lastI = clampedIdx;
+      // Redraw with hover indicator
+      drawChart(dates, values, label);
+      // Draw crosshair
+      const hx = xPos(clampedIdx);
+      const hy = yPos(values[clampedIdx]);
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(46,126,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.moveTo(hx, PAD.top); ctx.lineTo(hx, PAD.top + cH);
+      ctx.moveTo(PAD.left, hy); ctx.lineTo(PAD.left + cW, hy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(hx, hy, 6, 0, Math.PI*2);
+      ctx.fillStyle = '#2e7eff';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      tooltip.innerHTML = `
+        <div class="tooltip-date">${dates[clampedIdx]}</div>
+        <div class="tooltip-row">
+          <div class="tooltip-dot" style="background:#2e7eff"></div>
+          <span class="tooltip-label">${getLabelForKey(label).replace(/_/g,' ')}</span>
+          <span class="tooltip-val">${values[clampedIdx]}</span>
+        </div>
+        <div class="tooltip-row" style="margin-top:4px;opacity:0.7;">
+          <div class="tooltip-dot" style="background:#ffb347"></div>
+          <span class="tooltip-label">running avg</span>
+          <span class="tooltip-val">${fmt(runAvg[clampedIdx])}</span>
+        </div>
+      `;
+    }
+
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY - 20) + 'px';
+    tooltip.classList.add('visible');
+  }
+
+  function onMouseLeave() {
+    tooltip.classList.remove('visible');
+    lastI = -1;
+  }
+
+  // Remove old listeners by replacing canvas (workaround)
+  canvas.onmousemove = onMouseMove;
+  canvas.onmouseleave = onMouseLeave;
+}
+
+// ── HELPERS ────────────────────────────────────────────
+function fmt(n) {
+  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, {maximumFractionDigits: 1});
+  return n.toFixed(2).replace(/\.?0+$/, '');
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function showError(msg) {
+  document.getElementById('headerTitle').textContent = 'Error';
+  document.getElementById('mainContent').innerHTML = `
+    <div class="error-page">
+      <h2>Oops</h2>
+      <p style="color:var(--text-faint)">${escHtml(msg)}</p>
+      <a href="index.html" style="color:var(--blue);font-size:14px;margin-top:8px">← Back to Dashboard</a>
+    </div>
+  `;
+}
+
+// ── CUSTOMER ID ────────────────────────────────────────
+function loadCustomerBadge() {
+  const id = localStorage.getItem('sml_customer_id');
+  const badge = document.getElementById('customerIdBadge');
+  const label = document.getElementById('customerIdLabel');
+  if (id) {
+    label.textContent = id;
+    badge.style.display = 'flex';
+  }
+}
+
+// ── THEME ──────────────────────────────────────────────
+const THEME_KEY = 'sml_theme';
+const moonSVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`;
+const sunSVG  = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m8.66-9h-1M4.34 12h-1m15.07-6.07-.7.7M6.34 17.66l-.7.7m12.02 0-.7-.7M6.34 6.34l-.7-.7M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>`;
+
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.classList.add('light');
+    document.getElementById('themeIcon').innerHTML = moonSVG;
+  } else {
+    document.documentElement.classList.remove('light');
+    document.getElementById('themeIcon').innerHTML = sunSVG;
+  }
+  localStorage.setItem(THEME_KEY, theme);
+}
+function toggleTheme() {
+  applyTheme(document.documentElement.classList.contains('light') ? 'dark' : 'light');
+}
+function loadTheme() {
+  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+}
+
+// Redraw on resize
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (currentView && activeHeader && seriesData.dates) {
+      drawChart(seriesData.dates, seriesData.data[activeHeader] || [], activeHeader);
+    }
+  }, 150);
+});
+
+loadTheme();
+loadCustomerBadge();
+init().catch(e => console.error('init:', e));
+</script>
+</body>
+</html>

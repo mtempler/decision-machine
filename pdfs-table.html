@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SML — Decision Machine</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06090f; --surface: #0d1420; --surface2: #111927;
+    --border: #1e2d45; --border2: #253650;
+    --blue: #2e7eff; --blue-glow: rgba(46,126,255,0.15);
+    --text: #e8edf5; --text-dim: #8a9ab5; --text-faint: #4a5c78;
+    --green: #2de8a0; --red: #ff4d6a; --amber: #ffb347;
+    --amber-glow: rgba(255,179,71,0.12);
+    --radius: 14px; --radius-sm: 8px;
+  }
+  :root.light {
+    --bg: #f0f4fb; --surface: #ffffff; --surface2: #e8eef8;
+    --border: #d0daea; --border2: #b8c8df;
+    --blue: #1a6ef5; --blue-glow: rgba(26,110,245,0.12);
+    --text: #0f1b2d; --text-dim: #4a6080; --text-faint: #8a9eb8;
+    --green: #0ea572; --red: #e8273f; --amber: #d97706;
+    --amber-glow: rgba(217,119,6,0.1);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; transition: background-color 0.2s, border-color 0.2s, color 0.2s; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  body::before {
+    content: ''; position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 500px;
+    background: radial-gradient(ellipse, rgba(255,179,71,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(6,9,15,0.88); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); padding: 0 40px;
+  }
+  :root.light header { background: rgba(240,244,251,0.92); }
+  .header-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 16px; height: 64px; }
+  .back-btn {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-dim); font-size: 14px;
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  }
+  .back-btn:hover { color: var(--text); border-color: var(--border); }
+  .back-btn svg { width: 16px; height: 16px; }
+  .header-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+  .header-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .header-title {
+    font-family: 'DM Serif Display', serif; font-size: 18px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px;
+  }
+  .header-sub { font-size: 12px; color: var(--text-faint); font-family: 'DM Mono', monospace; }
+  .logo {
+    margin-left: auto; font-family: 'DM Serif Display', serif; font-size: 18px;
+    color: var(--text-dim); text-decoration: none; display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+  .logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 10px var(--amber); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 8px var(--amber); } 50% { box-shadow: 0 0 20px var(--amber); } }
+  .customer-id-badge {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); font-size: 12px; font-family: 'DM Mono', monospace;
+    max-width: 160px; overflow: hidden;
+  }
+  .customer-id-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .theme-btn {
+    width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-faint); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .theme-btn:hover { border-color: var(--border2); color: var(--text); }
+
+  /* ── MAIN ── */
+  main { max-width: 1400px; margin: 0 auto; padding: 40px 40px 80px; position: relative; z-index: 1; }
+
+  /* ── DM BADGE ── */
+  .dm-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--amber-glow); border: 1px solid rgba(255,179,71,0.25);
+    border-radius: 100px; padding: 4px 12px 4px 8px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--amber); margin-bottom: 24px;
+  }
+  .dm-badge svg { width: 12px; height: 12px; }
+
+  /* ── STATS ROW ── */
+  .stats-row { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 22px; min-width: 140px;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 6px; }
+  .stat-card-value { font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 500; color: var(--text); }
+  .stat-card-sub { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+
+  /* ── TABLE CARD ── */
+  .table-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; position: relative;
+  }
+  .table-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--amber), rgba(255,179,71,0.3), transparent);
+  }
+  .table-header {
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .table-header h3 { font-family: 'DM Serif Display', serif; font-size: 17px; }
+  .table-meta { font-size: 12px; color: var(--text-faint); font-family: 'DM Mono', monospace; white-space: nowrap; }
+  .table-search {
+    position: relative; margin-left: auto;
+  }
+  .table-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; color: var(--text-faint); pointer-events: none; }
+  .table-search input {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 7px 11px 7px 30px;
+    color: var(--text); font-size: 12px; font-family: 'DM Sans', sans-serif;
+    outline: none; width: 200px; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .table-search input:focus { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .table-search input::placeholder { color: var(--text-faint); }
+
+  .table-wrap { overflow-x: auto; max-height: calc(100vh - 340px); overflow-y: auto; }
+  .table-wrap::-webkit-scrollbar { width: 5px; height: 5px; }
+  .table-wrap::-webkit-scrollbar-track { background: transparent; }
+  .table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 11px 18px; text-align: left; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
+    background: var(--surface2); position: sticky; top: 0; z-index: 1;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  th:first-child { border-radius: 0; }
+  td {
+    padding: 10px 18px; font-size: 13px; font-family: 'DM Mono', monospace;
+    border-bottom: 1px solid rgba(30,45,69,0.4); white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,179,71,0.04); }
+  td:first-child { color: var(--text-dim); }
+
+  .no-results { padding: 32px; text-align: center; color: var(--text-faint); font-size: 13px; }
+
+  /* ── LOADING / ERROR ── */
+  .loading {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 300px; flex-direction: column; gap: 14px; color: var(--text-faint);
+  }
+  .spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-page {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 60vh; flex-direction: column; gap: 16px;
+    color: var(--text-dim); text-align: center;
+  }
+  .error-page h2 { font-family: 'DM Serif Display', serif; font-size: 28px; }
+
+  @media (max-width: 768px) {
+    header { padding: 0 16px; }
+    main { padding: 20px 16px 60px; }
+    .table-search input { width: 140px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <button class="back-btn" onclick="window.location.href='/'">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Dashboard
+    </button>
+    <div class="header-divider"></div>
+    <div class="header-info">
+      <div class="header-title" id="headerTitle">Loading…</div>
+      <div class="header-sub" id="headerSub"></div>
+    </div>
+    <a href="/" class="logo"><span class="logo-dot"></span>SML</a>
+    <div class="customer-id-badge" id="customerIdBadge" style="display:none;">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      <span id="customerIdLabel"></span>
+    </div>
+    <button class="theme-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+      <span id="themeIcon"></span>
+    </button>
+  </div>
+</header>
+
+<main id="mainContent">
+  <div class="loading"><div class="spinner"></div><span>Loading…</span></div>
+</main>
+
+<script>
+// ── STATE ──────────────────────────────────────────────
+const params   = new URLSearchParams(window.location.search);
+const jobFile  = params.get('file');
+
+let allRows    = [];   // parsed data rows
+let headers    = [];   // column headers
+let filterText = '';
+
+// ── INIT ───────────────────────────────────────────────
+async function init() {
+  if (!jobFile) { showError('No file specified.'); return; }
+
+  document.getElementById('headerTitle').textContent = jobFile;
+  document.getElementById('headerSub').textContent   = 'Decision Machine Output';
+  document.title = 'SML — ' + jobFile;
+
+  try {
+    const res = await fetch('/api/jobfiles/' + encodeURIComponent(jobFile) + '/csv');
+    if (!res.ok) {
+      if (res.status === 404) showError('File not found. Make sure it exists in the jobs/ directory.');
+      else showError('Failed to load file (HTTP ' + res.status + ').');
+      return;
+    }
+    const text = await res.text();
+    parseAndRender(text);
+  } catch(e) { showError('Could not load file: ' + e.message); }
+}
+
+// ── CSV PARSER ─────────────────────────────────────────
+function parseCSVRows(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let i = 0, n = text.length;
+  while (i < n) {
+    const row = [];
+    while (i < n && (text[i] === '\r' || text[i] === '\n')) i++;
+    if (i >= n) break;
+    while (i < n) {
+      let field = '';
+      if (text[i] === '"') {
+        i++;
+        while (i < n) {
+          if (text[i] === '"' && text[i+1] === '"') { field += '"'; i += 2; }
+          else if (text[i] === '"') { i++; break; }
+          else { field += text[i++]; }
+        }
+        while (i < n && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') i++;
+      } else {
+        while (i < n && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') { field += text[i++]; }
+      }
+      row.push(field.trim());
+      if (i < n && text[i] === ',') { i++; } else break;
+    }
+    while (i < n && (text[i] === '\r' || text[i] === '\n')) i++;
+    if (row.length === 0 || row.every(f => f === '')) continue;
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ── PARSE + RENDER ─────────────────────────────────────
+function parseAndRender(text) {
+  const rows = parseCSVRows(text);
+  if (rows.length < 1) { showError('File is empty.'); return; }
+
+  headers = rows[0];
+  allRows = rows.slice(1);
+
+  // Pad short rows
+  allRows.forEach(r => { while (r.length < headers.length) r.push(''); });
+
+  renderPage();
+}
+
+function renderPage() {
+  const filtered = filterText
+    ? allRows.filter(r => r.some(cell => cell.toLowerCase().includes(filterText)))
+    : allRows;
+
+  const modDate = new Date().toLocaleDateString(); // file mod date not available client-side
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="dm-badge">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+      Decision Machine
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-card-label">Rows</div>
+        <div class="stat-card-value">${allRows.length}</div>
+        <div class="stat-card-sub">data rows</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Columns</div>
+        <div class="stat-card-value">${headers.length}</div>
+        <div class="stat-card-sub">${headers.slice(0,3).join(', ')}${headers.length > 3 ? '…' : ''}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">File</div>
+        <div class="stat-card-value" style="font-size:13px;word-break:break-all;">${escHtml(jobFile)}</div>
+        <div class="stat-card-sub">source</div>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-header">
+        <h3>Output Data</h3>
+        <span class="table-meta">${filtered.length} of ${allRows.length} rows · ${headers.length} columns</span>
+        <div class="table-search">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/></svg>
+          <input placeholder="Filter rows…" oninput="applyFilter(this.value)" value="${escHtml(filterText)}">
+        </div>
+      </div>
+      <div class="table-wrap">
+        ${filtered.length === 0
+          ? '<div class="no-results">No rows match your filter.</div>'
+          : `<table>
+              <thead><tr>${headers.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr></thead>
+              <tbody>${filtered.map(row =>
+                `<tr>${headers.map((_, i) => `<td>${escHtml(row[i] ?? '')}</td>`).join('')}</tr>`
+              ).join('')}</tbody>
+            </table>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function applyFilter(val) {
+  filterText = val.toLowerCase();
+  renderPage();
+}
+
+// ── ERROR ──────────────────────────────────────────────
+function showError(msg) {
+  document.getElementById('headerTitle').textContent = 'Error';
+  document.getElementById('mainContent').innerHTML = `
+    <div class="error-page">
+      <h2>Oops</h2>
+      <p style="color:var(--text-faint)">${escHtml(msg)}</p>
+      <a href="/" style="color:var(--amber);font-size:14px;margin-top:8px">← Back to Dashboard</a>
+    </div>`;
+}
+
+// ── HELPERS ────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── CUSTOMER BADGE ─────────────────────────────────────
+function loadCustomerBadge() {
+  const id = localStorage.getItem('sml_customer_id');
+  if (id) {
+    document.getElementById('customerIdLabel').textContent = id;
+    document.getElementById('customerIdBadge').style.display = 'flex';
+  }
+}
+
+// ── THEME ──────────────────────────────────────────────
+const moonSVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`;
+const sunSVG  = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m8.66-9h-1M4.34 12h-1m15.07-6.07-.7.7M6.34 17.66l-.7.7m12.02 0-.7-.7M6.34 6.34l-.7-.7M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>`;
+function applyTheme(t) {
+  if (t === 'light') { document.documentElement.classList.add('light'); document.getElementById('themeIcon').innerHTML = moonSVG; }
+  else               { document.documentElement.classList.remove('light'); document.getElementById('themeIcon').innerHTML = sunSVG; }
+  localStorage.setItem('sml_theme', t);
+}
+function toggleTheme() { applyTheme(document.documentElement.classList.contains('light') ? 'dark' : 'light'); }
+function loadTheme()   { applyTheme(localStorage.getItem('sml_theme') || 'dark'); }
+
+loadTheme();
+loadCustomerBadge();
+init().catch(e => console.error('init:', e));
+</script>
+</body>
+</html>

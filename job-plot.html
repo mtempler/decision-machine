@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SML — Job Plot</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06090f; --surface: #0d1420; --surface2: #111927;
+    --border: #1e2d45; --border2: #253650;
+    --blue: #2e7eff; --blue-dim: #1a5abf;
+    --blue-glow: rgba(46,126,255,0.15); --blue-subtle: rgba(46,126,255,0.07);
+    --text: #e8edf5; --text-dim: #8a9ab5; --text-faint: #4a5c78;
+    --accent: #5b9fff; --green: #2de8a0; --red: #ff4d6a; --amber: #ffb347;
+    --radius: 14px; --radius-sm: 8px;
+  }
+  :root.light {
+    --bg: #f0f4fb; --surface: #ffffff; --surface2: #e8eef8;
+    --border: #d0daea; --border2: #b8c8df;
+    --blue: #1a6ef5; --blue-dim: #1458cc;
+    --blue-glow: rgba(26,110,245,0.12); --blue-subtle: rgba(26,110,245,0.07);
+    --text: #0f1b2d; --text-dim: #4a6080; --text-faint: #8a9eb8;
+    --accent: #1a6ef5; --green: #0ea572; --red: #e8273f; --amber: #d97706;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 500px;
+    background: radial-gradient(ellipse, rgba(46,126,255,0.07) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* HEADER */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(6,9,15,0.88); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); padding: 0 40px;
+  }
+  :root.light header { background: rgba(240,244,251,0.92); }
+  .header-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 16px; height: 64px; }
+  .back-btn {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-dim); font-size: 14px;
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: all 0.2s;
+  }
+  .back-btn:hover { color: var(--text); border-color: var(--border); }
+  .back-btn svg { width: 16px; height: 16px; }
+  .header-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+  .header-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .header-title { font-family: 'DM Serif Display', serif; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+  .header-sub { font-size: 12px; color: var(--text-faint); font-family: 'DM Mono', monospace; }
+  .logo { margin-left: auto; font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--text-dim); text-decoration: none; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 10px var(--blue); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 8px var(--blue); } 50% { box-shadow: 0 0 20px var(--blue); } }
+  .customer-id-badge {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); font-size: 12px; font-weight: 500;
+    font-family: 'DM Mono', monospace; max-width: 160px; overflow: hidden;
+  }
+  .customer-id-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .theme-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-faint); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .theme-btn:hover { border-color: var(--border2); color: var(--text); }
+
+  /* MAIN */
+  main { max-width: 1400px; margin: 0 auto; padding: 40px 40px 80px; position: relative; z-index: 1; }
+
+  /* UPLOAD ZONE */
+  .upload-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 40px;
+    text-align: center; margin-bottom: 32px;
+    position: relative; overflow: hidden;
+  }
+  .upload-section::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+  }
+  .upload-section h3 { font-family: 'DM Serif Display', serif; font-size: 20px; margin-bottom: 8px; }
+  .upload-section p { font-size: 13px; color: var(--text-dim); line-height: 1.6; margin-bottom: 24px; max-width: 520px; margin-left: auto; margin-right: auto; }
+  .upload-drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 36px; cursor: pointer; transition: all 0.2s; color: var(--text-dim);
+    max-width: 480px; margin: 0 auto;
+  }
+  .upload-drop-zone:hover, .upload-drop-zone.dragover { border-color: var(--green); background: rgba(45,232,160,0.05); color: var(--green); }
+  .upload-drop-zone svg { width: 32px; height: 32px; margin-bottom: 10px; }
+  .upload-drop-zone p { font-size: 14px; margin-bottom: 4px; }
+  .upload-drop-zone small { font-size: 12px; color: var(--text-faint); }
+  .error-msg { color: var(--red); font-size: 13px; background: rgba(255,77,106,0.08); border: 1px solid rgba(255,77,106,0.2); border-radius: 6px; padding: 10px 14px; display: none; margin-top: 16px; max-width: 480px; margin-left: auto; margin-right: auto; }
+  .error-msg.show { display: block; }
+
+  /* CONTROLS */
+  .controls-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+  .control-group { display: flex; flex-direction: column; gap: 6px; }
+  .control-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+  .select-wrap { position: relative; }
+  .select-wrap select {
+    appearance: none; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 36px 9px 14px;
+    color: var(--text); font-size: 14px; font-family: 'DM Sans', sans-serif;
+    cursor: pointer; outline: none; min-width: 200px; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .select-wrap select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glow); }
+  .select-wrap::after { content: ''; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); border: 5px solid transparent; border-top-color: var(--text-dim); margin-top: 3px; pointer-events: none; }
+  .btn-reupload {
+    margin-left: auto; display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text-dim); font-size: 13px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  }
+  .btn-reupload:hover { border-color: var(--border2); color: var(--text); }
+  .btn-reupload svg { width: 14px; height: 14px; }
+
+  /* CHART */
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px 28px 20px; margin-bottom: 28px;
+    position: relative;
+  }
+  .chart-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--green), #5b9fff, transparent); border-radius: var(--radius) var(--radius) 0 0; }
+  .chart-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
+  .chart-title { font-family: 'DM Serif Display', serif; font-size: 20px; }
+  .chart-meta { font-size: 12px; color: var(--text-faint); font-family: 'DM Mono', monospace; margin-top: 4px; }
+  .chart-container { position: relative; height: 360px; width: 100%; }
+  canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+  /* STATS */
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; transition: border-color 0.2s; }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 8px; }
+  .stat-card-value { font-family: 'DM Mono', monospace; font-size: 24px; font-weight: 500; color: var(--text); }
+  .stat-card-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+  /* TABLE */
+  .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .table-header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .table-header h3 { font-size: 15px; font-weight: 600; }
+  .table-header span { font-size: 12px; color: var(--text-faint); font-family: 'DM Mono', monospace; }
+  .table-wrap { overflow-x: auto; max-height: 400px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 12px 20px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); background: var(--surface2); position: sticky; top: 0; z-index: 1; border-bottom: 1px solid var(--border); }
+  td { padding: 11px 20px; font-size: 13px; border-bottom: 1px solid rgba(30,45,69,0.5); font-family: 'DM Mono', monospace; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(46,126,255,0.04); }
+  .date-col { color: var(--text-dim); }
+  .num-col { color: var(--text); }
+
+  /* TOOLTIP */
+  .chart-tooltip {
+    position: fixed; z-index: 999;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); padding: 10px 14px;
+    font-size: 12px; pointer-events: none; opacity: 0;
+    transition: opacity 0.15s; min-width: 140px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .chart-tooltip.visible { opacity: 1; }
+  .tooltip-date { color: var(--text-faint); font-family: 'DM Mono', monospace; margin-bottom: 6px; font-size: 11px; }
+  .tooltip-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .tooltip-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .tooltip-label { color: var(--text-dim); flex: 1; }
+  .tooltip-val { color: var(--text); font-family: 'DM Mono', monospace; font-weight: 500; }
+
+  /* LOADING / ERROR */
+  .loading { display: flex; align-items: center; justify-content: center; height: 300px; color: var(--text-faint); flex-direction: column; gap: 12px; }
+  .spinner { width: 36px; height: 36px; border: 2px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-page { display: flex; align-items: center; justify-content: center; min-height: 60vh; flex-direction: column; gap: 16px; color: var(--text-dim); text-align: center; }
+  .error-page h2 { font-family: 'DM Serif Display', serif; font-size: 28px; }
+
+  @media (max-width: 768px) {
+    header { padding: 0 16px; }
+    main { padding: 20px 16px 60px; }
+    .chart-container { height: 260px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <button class="back-btn" onclick="window.location.href='index.html'">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Dashboard
+    </button>
+    <div class="header-divider"></div>
+    <div class="header-info">
+      <div class="header-title" id="headerTitle">Loading…</div>
+      <div class="header-sub" id="headerSub"></div>
+    </div>
+    <a href="index.html" class="logo"><span class="logo-dot"></span>SML</a>
+    <div class="customer-id-badge" id="customerIdBadge" style="display:none;">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      <span id="customerIdLabel"></span>
+    </div>
+    <button class="theme-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+      <span id="themeIcon"></span>
+    </button>
+  </div>
+</header>
+
+<main id="mainContent">
+  <div class="loading"><div class="spinner"></div><span>Loading job…</span></div>
+</main>
+
+<div class="chart-tooltip" id="chartTooltip"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────
+const params    = new URLSearchParams(window.location.search);
+const fileParam = params.get('file');
+
+let currentJob   = { csvData: null, filename: fileParam || '' };
+let activeCol    = null;
+let activeSymbol = null;
+
+// ── INIT ───────────────────────────────────────────────
+async function init() {
+  if (!fileParam) { showError('No file specified.'); return; }
+
+  document.getElementById('headerTitle').textContent = fileParam;
+  document.title = `SML — ${fileParam}`;
+
+  try {
+    const res = await fetch('/api/jobfiles/' + encodeURIComponent(fileParam) + '/csv');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    parseCSV(await res.text(), fileParam);
+  } catch(e) {
+    showError('Could not load file: ' + e.message);
+  }
+}
+
+// ── UPLOAD ─────────────────────────────────────────────
+function renderUpload() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="upload-section">
+      <h3>Upload Results CSV</h3>
+      <p>
+        Upload the processed output file for <strong>${escHtml(currentJob.filename)}</strong>.<br>
+        Expected format: <strong>Col 1</strong> = header label &nbsp;·&nbsp;
+        <strong>Col 2</strong> = timestamps (YYYY-MM-DD) &nbsp;·&nbsp;
+        <strong>Col 3+</strong> = SML measurements (numeric).
+      </p>
+      <div class="upload-drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        <p>Click to select CSV file</p>
+        <small>or drag and drop</small>
+      </div>
+      <input type="file" id="fileInput" accept=".csv" style="display:none" onchange="handleFile(this.files[0])">
+      <div class="error-msg" id="uploadError"></div>
+    </div>
+  `;
+  // Drag & drop
+  const dz = document.getElementById('dropZone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+}
+
+function handleFile(file) {
+  if (!file || !file.name.endsWith('.csv')) { showUploadError('Only CSV files are supported.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => parseCSV(e.target.result, file.name);
+  reader.readAsText(file);
+}
+
+// Robust RFC-4180 CSV parser — handles quotes, embedded commas, \r\n, BOM, trailing commas
+function parseCSVRows(text) {
+  // Strip BOM if present
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let i = 0, n = text.length;
+  while (i < n) {
+    const row = [];
+    // Skip blank lines between rows
+    while (i < n && (text[i] === '\r' || text[i] === '\n')) i++;
+    if (i >= n) break;
+    while (i < n) {
+      let field = '';
+      if (text[i] === '"') {
+        i++; // opening quote
+        while (i < n) {
+          if (text[i] === '"' && text[i+1] === '"') { field += '"'; i += 2; }
+          else if (text[i] === '"') { i++; break; } // closing quote
+          else { field += text[i++]; }
+        }
+        // skip any whitespace/chars up to delimiter or EOL
+        while (i < n && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') i++;
+      } else {
+        while (i < n && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') { field += text[i++]; }
+      }
+      row.push(field.trim());
+      if (i < n && text[i] === ',') { i++; } // consume delimiter
+      else break; // EOL
+    }
+    // Skip EOL chars
+    while (i < n && (text[i] === '\r' || text[i] === '\n')) i++;
+    // Skip rows that are entirely empty after parsing
+    if (row.length === 0 || row.every(f => f === '')) continue;
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseCSV(text, filename) {
+  const rows = parseCSVRows(text);
+  if (rows.length < 2) { showUploadError('CSV must have at least a header row and one data row.'); return; }
+
+  const rawHeaders = rows[0];
+  if (rawHeaders.length < 3) {
+    showUploadError('CSV must have at least 3 columns: Symbol, TS, and one measurement column.');
+    return;
+  }
+
+  // Col 0 = Symbol, Col 1 = TS (date), Col 2+ = measurements
+  const symbolCol  = rawHeaders[0];  // e.g. "Symbol"
+  const tsCol      = rawHeaders[1];  // e.g. "TS"
+  const measureCols = rawHeaders.slice(2).filter(h => h !== '');
+
+  // Pivot: symbol → { dates[], data: { col → values[] } }
+  const pivot = new Map();
+
+  for (let i = 1; i < rows.length; i++) {
+    const cols = rows[i];
+    while (cols.length < rawHeaders.length) cols.push('');
+
+    const symbol = cols[0].trim();
+    const ts     = cols[1].trim();
+
+    if (!symbol) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ts)) {
+      showUploadError(`Row ${i+1}: invalid date "${ts}". Expected YYYY-MM-DD.`); return;
+    }
+
+    if (!pivot.has(symbol)) {
+      const data = {};
+      measureCols.forEach(c => data[c] = []);
+      pivot.set(symbol, { dates: [], data });
+    }
+    const sym = pivot.get(symbol);
+    sym.dates.push(ts);
+
+    for (let j = 0; j < measureCols.length; j++) {
+      const val = cols[j + 2];
+      const num = parseFloat(val);
+      if (isNaN(num)) {
+        showUploadError(`Row ${i+1}, column "${measureCols[j]}": "${val}" is not a number.`); return;
+      }
+      sym.data[measureCols[j]].push(num);
+    }
+  }
+
+  // Sort each symbol's rows by date
+  pivot.forEach(sym => {
+    const order = sym.dates.map((d,i) => i).sort((a,b) => sym.dates[a] < sym.dates[b] ? -1 : 1);
+    sym.dates = order.map(i => sym.dates[i]);
+    measureCols.forEach(c => { sym.data[c] = order.map(i => sym.data[c][i]); });
+  });
+
+  // Validate minimum timestamps per symbol
+  const symbols = [...pivot.keys()];
+  const minCount = Math.min(...symbols.map(s => pivot.get(s).dates.length));
+  if (minCount < 100) {
+    showUploadError(`Insufficient data: ${minCount} timestamps found. A minimum of 100 is required.`); return;
+  }
+
+  currentJob.csvData = {
+    sourceFile:   filename,
+    symbolCol,
+    tsCol,
+    measureCols,
+    pivot:        Object.fromEntries([...pivot.entries()].map(([k,v]) => [k, v])),
+    symbols,
+    fullLength:   Math.max(...symbols.map(s => pivot.get(s).dates.length)),
+  };
+
+  activeCol = 'value';
+  activeSymbol = symbols[0];
+  renderPlot();
+}
+
+function showUploadError(msg) {
+  const el = document.getElementById('uploadError');
+  if (el) { el.textContent = msg; el.classList.add('show'); }
+}
+
+// Build dropdown options — merges p+/p- → "probabilities", therm_p+/therm_p- → "thermal probabilities", T+FE → "free_energy & temperature"
+function buildMeasureOptions(measureCols, activeCol) {
+  const hasPair      = measureCols.includes('p+')       && measureCols.includes('p-');
+  const hasThermPair = measureCols.includes('therm_p+') && measureCols.includes('therm_p-');
+  const hasFeT       = measureCols.includes('FE')       && measureCols.includes('T');
+  const skip = new Set([
+    ...(hasPair      ? ['p+',      'p-']       : []),
+    ...(hasThermPair ? ['therm_p+','therm_p-'] : []),
+    ...(hasFeT       ? ['FE',      'T']        : []),
+  ]);
+
+  // Paired synthetic entries
+  const synthetics = {
+    'probabilities':             { show: hasPair,      val: 'probabilities' },
+    'free_energy & temperature': { show: hasFeT,       val: 'free_energy & temperature' },
+    'thermal probabilities':     { show: hasThermPair, val: 'thermal probabilities' },
+  };
+
+  // Explicit display order
+  const ORDER = [
+    'value',
+    // Binary
+    'probabilities', 'energy', 'power', 'resistance', 'noise',
+    'free_energy & temperature', 'thermal probabilities',
+    // Units
+    'p', 'E', 'T', 'T_B',
+    'exp_n', 'exp_strain', 'exp_demand',
+    'sus_n', 'sus_strain', 'sus_E', 'sus_demand',
+    'var_n', 'var_strain', 'var_E', 'var_del_n', 'cov_n_strain',
+  ];
+
+  const opts = [];
+  const seen = new Set();
+
+  // First pass: ordered entries
+  for (const name of ORDER) {
+    if (name in synthetics) {
+      const { show, val } = synthetics[name];
+      if (!show) continue;
+      opts.push(`<option value="${escHtml(val)}" ${activeCol === val ? 'selected' : ''}>${escHtml(name)}</option>`);
+      seen.add(name); seen.add(val);
+    } else {
+      if (!measureCols.includes(name) || skip.has(name) || seen.has(name)) continue;
+      opts.push(`<option value="${escHtml(name)}" ${activeCol === name ? 'selected' : ''}>${escHtml(name)}</option>`);
+      seen.add(name);
+    }
+  }
+
+  // Second pass: any remaining columns not in ORDER
+  measureCols.filter(c => !skip.has(c) && !seen.has(c)).forEach(c => {
+    opts.push(`<option value="${escHtml(c)}" ${activeCol === c ? 'selected' : ''}>${escHtml(c)}</option>`);
+  });
+
+  return opts.join('');
+}
+
+// ── PLOT ───────────────────────────────────────────────
+function renderPlot() {
+  const csv = currentJob.csvData;
+
+  const symData = csv.pivot[activeSymbol];
+  const fullLen = symData.dates.length;
+  const splitAt = Math.ceil(fullLen / 2);
+  const dates   = symData.dates.slice(splitAt);
+
+  const warnBanner = fullLen <= 110
+    ? `<div style="background:rgba(255,179,71,0.1);border:1px solid rgba(255,179,71,0.3);border-radius:6px;padding:8px 14px;font-size:12px;color:var(--amber);margin-bottom:14px;">
+        ⚠ ${fullLen} timestamps for <strong>${escHtml(activeSymbol)}</strong> — recommended minimum is 110 for reliable results.
+      </div>`
+    : '';
+
+  // Build series — probabilities and thermal probabilities each show their pair together
+  const isPaired      = activeCol === 'probabilities'       && csv.measureCols.includes('p+')       && csv.measureCols.includes('p-');
+  const isThermPaired = activeCol === 'thermal probabilities' && csv.measureCols.includes('therm_p+') && csv.measureCols.includes('therm_p-');
+  const isFeT         = activeCol === 'free_energy & temperature'      && csv.measureCols.includes('FE')       && csv.measureCols.includes('T');
+  const anyPaired = isPaired || isThermPaired;
+
+  const series = isPaired
+    ? [
+        { col: 'p+',      values: (symData.data['p+']      || []).slice(splitAt), color: '#2de8a0', label: 'p+' },
+        { col: 'p-',      values: (symData.data['p-']      || []).slice(splitAt), color: '#ff4d6a', label: 'p-' },
+      ]
+    : isThermPaired
+    ? [
+        { col: 'therm_p+', values: (symData.data['therm_p+'] || []).slice(splitAt), color: '#2de8a0', label: 'therm p+' },
+        { col: 'therm_p-', values: (symData.data['therm_p-'] || []).slice(splitAt), color: '#ff4d6a', label: 'therm p-' },
+      ]
+    : isFeT
+    ? [
+        { col: 'T',  values: (symData.data['T']  || []).slice(splitAt), color: '#ff4d6a', label: 'T',  axis: 'left'  },
+        { col: 'FE', values: (symData.data['FE'] || []).slice(splitAt), color: '#2e7eff', label: 'FE', axis: 'right' },
+      ]
+    : [
+        { col: activeCol, values: (symData.data[activeCol] || []).slice(splitAt), color: '#2e7eff', label: activeCol },
+      ];
+
+  // Detect precision for table display (same logic as drawChart)
+  const tableDp = detectPrecision(series.map(s => s.values));
+  const primary = series[0].values;
+  const min = Math.min(...series.flatMap(s => s.values));
+  const max = Math.max(...series.flatMap(s => s.values));
+  const avg  = primary.reduce((a,b)=>a+b,0) / primary.length;
+  const last  = primary[primary.length - 1];
+  const change = last - primary[0];
+
+  // Legend for paired mode
+  const pairedLabel = isPaired ? 'probabilities' : isThermPaired ? 'thermal probabilities' : isFeT ? 'free_energy & temperature' : activeCol;
+
+  const legendHtml = (anyPaired || isFeT) ? `
+    <div style="display:flex;gap:14px;align-items:center;margin-top:6px;">
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:${series[0].color};">
+        <span style="width:20px;height:2px;background:${series[0].color};display:inline-block;border-radius:2px;"></span>${series[0].label}${isFeT ? ' (left)' : ''}
+      </span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:${series[1].color};">
+        <span style="width:20px;height:2px;background:${series[1].color};display:inline-block;border-radius:2px;"></span>${series[1].label}${isFeT ? ' (right)' : ''}
+      </span>
+    </div>` : '';
+
+  document.getElementById('mainContent').innerHTML = `
+    <!-- Controls -->
+    <div class="controls-bar">
+      <div class="control-group">
+        <div class="control-label">Symbol</div>
+        <div class="select-wrap">
+          <select id="symbolSelect" onchange="changeSymbol(this.value)">
+            ${csv.symbols.map(s => `<option value="${escHtml(s)}" ${s === activeSymbol ? 'selected' : ''}>${escHtml(s)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="control-group">
+        <div class="control-label">Measurement</div>
+        <div class="select-wrap">
+          <select id="colSelect" onchange="changeCol(this.value)">
+            ${buildMeasureOptions(csv.measureCols, activeCol)}
+          </select>
+        </div>
+      </div>
+      <button class="btn-reupload" onclick="reupload()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        Replace CSV
+      </button>
+    </div>
+
+    ${warnBanner}
+
+    <!-- Chart -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">${escHtml(activeSymbol)} — ${pairedLabel}</div>
+          <div class="chart-meta">${escHtml(csv.sourceFile)} · ${dates[0]} → ${dates[dates.length-1]} · ${dates.length} points (second half of ${fullLen})</div>
+          ${legendHtml}
+        </div>
+      </div>
+      <div class="chart-container"><canvas id="mainChart"></canvas></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-card-label">Latest${(anyPaired || isFeT) ? ` (${series[0].label})` : ''}</div>
+        <div class="stat-card-value">${fmt(last)}</div>
+        <div class="stat-card-sub">${dates[dates.length-1]}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Average${(anyPaired || isFeT) ? ` (${series[0].label})` : ''}</div>
+        <div class="stat-card-value">${fmt(avg)}</div>
+        <div class="stat-card-sub">second half</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Change${(anyPaired || isFeT) ? ` (${series[0].label})` : ''}</div>
+        <div class="stat-card-value" style="color:${change>=0?'var(--green)':'var(--red)'}">${change>=0?'+':''}${fmt(change)}</div>
+        <div class="stat-card-sub">over period</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Min</div>
+        <div class="stat-card-value">${fmt(min)}</div>
+        <div class="stat-card-sub">${(anyPaired || isFeT) ? 'both curves' : 'lowest value'}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Max</div>
+        <div class="stat-card-value">${fmt(max)}</div>
+        <div class="stat-card-sub">${(anyPaired || isFeT) ? 'both curves' : 'highest value'}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Length</div>
+        <div class="stat-card-value">${dates.length}</div>
+        <div class="stat-card-sub">of ${fullLen} total</div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h3>${escHtml(activeSymbol)} · ${pairedLabel}</h3>
+        <span>${dates.length} rows (second half) · ${escHtml(csv.sourceFile)}</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>${escHtml(csv.symbolCol)}</th>
+            <th>${escHtml(csv.tsCol)}</th>
+            ${series.map(s => `<th>${escHtml(s.label)}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${dates.map((d,i) => `
+              <tr>
+                <td class="date-col">${escHtml(activeSymbol)}</td>
+                <td class="date-col">${d}</td>
+                ${series.map(s => `<td class="num-col">${fmtDp(s.values[i], tableDp)}</td>`).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  drawChart(dates, series);
+}
+
+function changeSymbol(sym) { activeSymbol = sym; renderPlot(); }
+function changeCol(col)    { activeCol    = col; renderPlot(); }
+function reupload() {
+  if (!confirm('Replace the current CSV data for this job?')) return;
+  currentJob.csvData = null;
+  renderUpload();
+}
+
+// ── CHART ─────────────────────────────────────────────
+// series: [{ values, color, label }]
+function drawChart(dates, series) {
+  const canvas = document.getElementById('mainChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const container = canvas.parentElement;
+  canvas.width  = container.offsetWidth  * window.devicePixelRatio;
+  canvas.height = container.offsetHeight * window.devicePixelRatio;
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const W = container.offsetWidth, H = container.offsetHeight;
+
+  const isDual = series.some(s => s.axis);
+  const PAD = { top: 32, right: isDual ? 80 : 24, bottom: 60, left: 80 };
+  const cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
+  const n  = dates.length;
+
+  // Detect precision per axis
+  const dp      = detectPrecision(series.filter(s => !isDual || s.axis === 'left').map(s => s.values));
+  const dpRight = isDual ? detectPrecision(series.filter(s => s.axis === 'right').map(s => s.values)) : dp;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Build per-axis scale helpers
+  function makeScale(vals) {
+    const minV = Math.min(...vals), maxV = Math.max(...vals);
+    const padV = (maxV - minV || 1) * 0.12;
+    const yMin = minV - padV, yMax = maxV + padV;
+    return {
+      yMin, yMax,
+      yPos:    v => PAD.top + cH - ((v - yMin) / (yMax - yMin)) * cH,
+      // Inverse: given a y pixel, what value does right scale show there?
+      yInvert: y => yMin + (1 - (y - PAD.top) / cH) * (yMax - yMin),
+    };
+  }
+
+  let leftScale, rightScale;
+  if (isDual) {
+    leftScale  = makeScale(series.filter(s => s.axis === 'left') .flatMap(s => s.values));
+    rightScale = makeScale(series.filter(s => s.axis === 'right').flatMap(s => s.values));
+  } else {
+    leftScale = rightScale = makeScale(series.flatMap(s => s.values));
+  }
+
+  function scaleFor(s) { return (isDual && s.axis === 'right') ? rightScale : leftScale; }
+  function xPos(i)     { return PAD.left + (i / (n - 1)) * cW; }
+
+  // Grid lines + axis labels
+  ctx.strokeStyle = 'rgba(30,45,69,0.8)'; ctx.lineWidth = 1;
+  ctx.font = '400 11px "DM Mono", monospace';
+  const leftColor  = isDual ? series.find(s => s.axis === 'left').color  : '#4a5c78';
+  const rightColor = isDual ? series.find(s => s.axis === 'right').color : '#4a5c78';
+  for (let i = 0; i <= 5; i++) {
+    // Grid line position driven by left scale
+    const v = leftScale.yMin + (leftScale.yMax - leftScale.yMin) * (i / 5);
+    const y = leftScale.yPos(v);
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+    // Left label
+    ctx.textAlign = 'right'; ctx.fillStyle = leftColor;
+    ctx.fillText(fmtDp(v, dp), PAD.left - 8, y + 4);
+    // Right label — invert right scale at the same y pixel
+    if (isDual) {
+      const rv = rightScale.yInvert(y);
+      ctx.textAlign = 'left'; ctx.fillStyle = rightColor;
+      ctx.fillText(fmtDp(rv, dpRight), PAD.left + cW + 8, y + 4);
+    }
+  }
+
+  // X labels
+  ctx.textAlign = 'center'; ctx.fillStyle = '#4a5c78';
+  const xTicks = Math.min(8, n);
+  for (let i = 0; i < xTicks; i++) {
+    const idx = Math.round((i / (xTicks - 1)) * (n - 1));
+    ctx.fillText(dates[idx].slice(5), xPos(idx), H - PAD.bottom + 18);
+  }
+
+  // 0.5 reference line (single-axis only, when in range)
+  if (!isDual && leftScale.yMin <= 0.5 && leftScale.yMax >= 0.5) {
+    const ry = leftScale.yPos(0.5);
+    ctx.save();
+    ctx.beginPath(); ctx.strokeStyle = 'rgba(200,200,200,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([5,5]);
+    ctx.moveTo(PAD.left, ry); ctx.lineTo(PAD.left + cW, ry);
+    ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  }
+
+  // Draw each series
+  series.forEach(s => {
+    const { values, color } = s;
+    const sc = scaleFor(s);
+
+    // Fill gradient (single series only)
+    if (series.length === 1) {
+      const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + cH);
+      const rgb  = color === '#2de8a0' ? '45,232,160' : color === '#ff4d6a' ? '255,77,106' : '46,126,255';
+      grad.addColorStop(0, `rgba(${rgb},0.18)`);
+      grad.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.beginPath();
+      values.forEach((v,i) => { const x=xPos(i),y=sc.yPos(v); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+      ctx.lineTo(xPos(n-1), PAD.top+cH); ctx.lineTo(xPos(0), PAD.top+cH);
+      ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+    }
+
+    // Line
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    values.forEach((v,i) => { const x=xPos(i),y=sc.yPos(v); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+    ctx.stroke();
+
+    // End dots
+    [0, n-1].forEach(i => {
+      ctx.beginPath(); ctx.arc(xPos(i), sc.yPos(values[i]), 5, 0, Math.PI*2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = '#06090f'; ctx.lineWidth = 2; ctx.stroke();
+    });
+  });
+
+  // Hover
+  const tooltip = document.getElementById('chartTooltip');
+  let lastI = -1;
+  function onMove(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    if (mx < PAD.left || mx > W-PAD.right || my < PAD.top || my > H-PAD.bottom) {
+      tooltip.classList.remove('visible'); lastI = -1; return;
+    }
+    const idx = Math.max(0, Math.min(n-1, Math.round(((mx-PAD.left)/cW)*(n-1))));
+    if (idx !== lastI) {
+      lastI = idx;
+      drawChart(dates, series);
+      const hx = xPos(idx);
+      ctx.beginPath(); ctx.strokeStyle = 'rgba(200,200,200,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+      ctx.moveTo(hx, PAD.top); ctx.lineTo(hx, PAD.top+cH);
+      ctx.stroke(); ctx.setLineDash([]);
+      series.forEach(s => {
+        const hy2 = scaleFor(s).yPos(s.values[idx]);
+        ctx.beginPath(); ctx.arc(hx, hy2, 6, 0, Math.PI*2);
+        ctx.fillStyle = s.color; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      });
+      tooltip.innerHTML = `
+        <div class="tooltip-date">${dates[idx]}</div>
+        ${series.map(s => `
+          <div class="tooltip-row">
+            <div class="tooltip-dot" style="background:${s.color}"></div>
+            <span class="tooltip-label">${s.label}</span>
+            <span class="tooltip-val">${fmtDp(s.values[idx], dp)}</span>
+          </div>`).join('')}`;
+    }
+    tooltip.style.left = (e.clientX+14)+'px';
+    tooltip.style.top  = (e.clientY-20)+'px';
+    tooltip.classList.add('visible');
+  }
+  canvas.onmousemove = onMove;
+  canvas.onmouseleave = () => { tooltip.classList.remove('visible'); lastI = -1; };
+}
+
+// ── HELPERS ───────────────────────────────────────────
+function fmt(n) {
+  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, {maximumFractionDigits:1});
+  return n.toFixed(2).replace(/\.?0+$/,'');
+}
+function fmtDp(n, dp) {
+  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, {maximumFractionDigits: Math.min(dp,1)});
+  return n.toFixed(dp);
+}
+// Detect max decimal places in an array of values, capped at 4
+function detectPrecision(valArrays) {
+  let max = 0;
+  for (const vals of valArrays) {
+    for (const v of vals) {
+      const s = v.toString();
+      const dot = s.indexOf('.');
+      if (dot >= 0) max = Math.max(max, Math.min(s.length - dot - 1, 4));
+      if (max === 4) return 4;
+    }
+  }
+  return max;
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function showError(msg) {
+  document.getElementById('headerTitle').textContent = 'Error';
+  document.getElementById('mainContent').innerHTML = `
+    <div class="error-page"><h2>Oops</h2>
+      <p style="color:var(--text-faint)">${escHtml(msg)}</p>
+      <a href="index.html" style="color:var(--blue);font-size:14px;margin-top:8px">← Back to Dashboard</a>
+    </div>`;
+}
+
+// ── CUSTOMER BADGE ─────────────────────────────────────
+function loadCustomerBadge() {
+  const id = localStorage.getItem('sml_customer_id');
+  if (id) { document.getElementById('customerIdLabel').textContent = id; document.getElementById('customerIdBadge').style.display = 'flex'; }
+}
+
+// ── THEME ─────────────────────────────────────────────
+const THEME_KEY = 'sml_theme';
+const moonSVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`;
+const sunSVG  = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m8.66-9h-1M4.34 12h-1m15.07-6.07-.7.7M6.34 17.66l-.7.7m12.02 0-.7-.7M6.34 6.34l-.7-.7M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>`;
+function applyTheme(t) {
+  if (t==='light') { document.documentElement.classList.add('light'); document.getElementById('themeIcon').innerHTML=moonSVG; }
+  else { document.documentElement.classList.remove('light'); document.getElementById('themeIcon').innerHTML=sunSVG; }
+  localStorage.setItem(THEME_KEY,t);
+}
+function toggleTheme() { applyTheme(document.documentElement.classList.contains('light')?'dark':'light'); }
+function loadTheme() { applyTheme(localStorage.getItem(THEME_KEY)||'dark'); }
+
+// Redraw on resize
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (currentJob?.csvData && activeCol && activeSymbol) {
+      const sym     = currentJob.csvData.pivot[activeSymbol];
+      const splitAt = Math.ceil(sym.dates.length / 2);
+      const dates   = sym.dates.slice(splitAt);
+      const isPaired      = activeCol === 'probabilities'       && currentJob.csvData.measureCols.includes('p+')       && currentJob.csvData.measureCols.includes('p-');
+      const isThermPaired = activeCol === 'thermal probabilities' && currentJob.csvData.measureCols.includes('therm_p+') && currentJob.csvData.measureCols.includes('therm_p-');
+      const isFeT         = activeCol === 'free_energy & temperature'      && currentJob.csvData.measureCols.includes('FE')       && currentJob.csvData.measureCols.includes('T');
+      const series = isPaired
+        ? [
+            { col: 'p+',       values: sym.data['p+'].slice(splitAt),       color: '#2de8a0', label: 'p+' },
+            { col: 'p-',       values: sym.data['p-'].slice(splitAt),       color: '#ff4d6a', label: 'p-' },
+          ]
+        : isThermPaired
+        ? [
+            { col: 'therm_p+', values: sym.data['therm_p+'].slice(splitAt), color: '#2de8a0', label: 'therm p+' },
+            { col: 'therm_p-', values: sym.data['therm_p-'].slice(splitAt), color: '#ff4d6a', label: 'therm p-' },
+          ]
+        : isFeT
+        ? [
+            { col: 'T',  values: sym.data['T'].slice(splitAt),  color: '#ff4d6a', label: 'T',  axis: 'left'  },
+            { col: 'FE', values: sym.data['FE'].slice(splitAt), color: '#2e7eff', label: 'FE', axis: 'right' },
+          ]
+        : [{ col: activeCol, values: sym.data[activeCol].slice(splitAt), color: '#2e7eff', label: activeCol }];
+      drawChart(dates, series);
+    }
+  }, 150);
+});
+
+loadTheme();
+loadCustomerBadge();
+init();
+</script>
+</body>
+</html>
