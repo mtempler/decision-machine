@@ -24,7 +24,7 @@ Upload a time-series CSV  →  Review in the plot viewer  →  Submit for SML pr
 
 |Dashboard|Job Plot|Measurements|
 |-|-|-|
-|!\[Dashboard](images/dashboard.png)|!\[Job Plot](images/job-plot.png)|!\[Measurements](images/measurements.png)|
+|!\[Dashboard](doc/screenshots/dashboard.png)|!\[Job Plot](doc/screenshots/job-plot.png)|!\[Measurements](doc/screenshots/measurements.png)|
 
 \---
 
@@ -74,7 +74,7 @@ SML-App runs a local Flask server on `localhost:5000`. Your time-series CSVs are
 ## Requirements
 
 * Windows 10 or later (macOS support planned)
-* AWS CLI configured (`\~/.aws/credentials`) — for CLI auth mode
+* AWS CLI configured (`\\\~/.aws/credentials`) — for CLI auth mode
 * Active internet connection for SML processing and TSU billing
 * No internet required for local Views, plotting, and data management
 
@@ -109,17 +109,17 @@ No analytics, no telemetry, no third-party data sharing.
 `sml-app.config` (created at first launch, lives next to the `.exe`):
 
 ```ini
-\[identity]
+\\\[identity]
 custid    = your-customer-id
-auth\_mode = cli          ; cli | cognito
+auth\\\_mode = cli          ; cli | cognito
 email     = you@example.com
 
-\[storage]
-input\_bucket   = customer.decision-machine.com
-output\_bucket  = output.customer.decision-machine.com
-watch\_path     = downloads
-watch\_interval = 30
-agent\_interval = 60
+\\\[storage]
+input\\\_bucket   = customer.decision-machine.com
+output\\\_bucket  = output.customer.decision-machine.com
+watch\\\_path     = downloads
+watch\\\_interval = 30
+agent\\\_interval = 60
 ```
 
 \---
@@ -131,18 +131,18 @@ Your AWS credentials need the following permissions:
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": \[
+  "Statement": \\\[
     {
       "Effect": "Allow",
-      "Action": \["s3:PutObject"],
-      "Resource": "arn:aws:s3:::customer.decision-machine.com/OnDemand/\*"
+      "Action": \\\["s3:PutObject"],
+      "Resource": "arn:aws:s3:::customer.decision-machine.com/OnDemand/\\\*"
     },
     {
       "Effect": "Allow",
-      "Action": \["s3:GetObject", "s3:ListBucket"],
-      "Resource": \[
+      "Action": \\\["s3:GetObject", "s3:ListBucket"],
+      "Resource": \\\[
         "arn:aws:s3:::output.customer.decision-machine.com",
-        "arn:aws:s3:::output.customer.decision-machine.com/{your-custid}/\*"
+        "arn:aws:s3:::output.customer.decision-machine.com/{your-custid}/\\\*"
       ]
     }
   ]
