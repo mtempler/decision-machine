@@ -169,6 +169,18 @@ Your AWS credentials need the following permissions:
 
 Contributions are welcome and appreciated — this is an open-source client for an active platform, and there's meaningful work to be done.
 
+### Architecture
+
+Decision Machine is a three-layer platform. Contributors can build agents at any layer, or replace the presentation layer entirely. The backend SML processing pipeline is fixed.
+
+![Functional Architecture](docs/architecture.png)
+
+- **Measurement Agents** — collect and deliver time-series data into the platform
+- **Control Agents** — execute demand and supply actions driven by DM output
+- **Decision Agents** — consume Decision Machine reports to drive automated decisions
+
+The SML-App in this repository is the reference presentation layer. Anything is permitted to replace it.
+
 **What's open for contribution:**
 - The local Flask server (`server.py`) and all UI code
 - The background download agent
