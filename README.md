@@ -12,9 +12,9 @@ Decision Machine is a pipeline system to upload, visualize, and submit time-seri
 Upload a time-series CSV  →  Review in the plot viewer  →  Submit for SML processing  →  Explore results
 ```
 
-- **Views** — organize your time-series data into named views with categories and notes
-- **Measurements** — interactive time-series plotter with date range selection
+- **Views** — upload, cleanse and organize your time-series data into named views with categories and notes  
 - **SML Processing** — submit Binary or Units analysis jobs; results appear automatically when ready
+- **Measurements** — interactive time-series plotter for SML measurements
 - **Decision Machine** — tabular viewer for DM output reports
 - **File management** — archive, restore, and delete output files directly from the dashboard
 
@@ -171,13 +171,13 @@ Contributions are welcome and appreciated — this is an open-source client for 
 
 ### Architecture
 
-Decision Machine is a three-layer platform. Contributors can build agents at any layer, or replace the presentation layer entirely. The backend SML processing pipeline is fixed.
+Decision Machine is a three-layer platform. Contributors can build agents at any layer, and replace the presentation layers entirely. The backend SML processing pipeline is fixed.
 
 ![Functional Architecture](docs/architecture.png)
 
-- **Measurement Agents** — feed time-series into the Precision Insight (Scientific ML) layer, which handles state calculation, trajectory planning, and trajectory control
-- **Decision Machine** — sits above that, producing decisions around levels, risk, and allocation
-- **Control Agents** — execute user control actions on the demand and supply levers
+- **Measurement Agents** — feed time-series into Precision Insight (Scientific Machine Learning, SML) for scientific measurement for state calculation, trajectory planning, and trajectory control
+- **Decision Machine** — sits above that, producing decisions around levels, risk, and allocations that can be concluded using SML measurements
+- **Control Agents** — execute user control actions on the demand and supply levers for trajectory control
 - **Decision Agents** — sit at the top, consuming DM output to drive automated decisions
 
 The SML-App in this repository is the reference presentation layer. Anything is permitted to replace it.
@@ -185,16 +185,17 @@ The SML-App in this repository is the reference presentation layer. Anything is 
 **What's open for contribution:**
 - The local Flask server (`server.py`) and all UI code
 - The background download agent
-- Build tooling (`build.bat`, PyInstaller config)
 - Documentation and examples
+- Specialized applications for types of time-series (e.g., car insurance defaults, investment decisions, and so on)
 
 *Note: The SML processing Lambda functions and Decision Machine backend infrastructure are proprietary and not part of this repository.*
 
 **Where help is most wanted right now:**
 - 🍎 **macOS port** — the biggest item on the roadmap; Python/Flask experience helpful
-- 🧪 **Testing** — unit and integration tests are thin; pytest contributions welcome
+- 🧪 **Testing** — unit and integration tests can be improved; pytest contributions welcome
 - 🎨 **UI improvements** — the frontend is functional but unpolished
 - 📖 **Docs** — usage examples, tutorials, and annotated screenshots
+- innovative usage
 
 **Getting started:**
 1. Follow the [build from source](#option-2--build-from-source) instructions
