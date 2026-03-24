@@ -171,7 +171,7 @@ Contributions are welcome and appreciated — this is an open-source client for 
 
 ### Architecture
 
-Decision Machine is a three-layer platform. Contributors can build agents at any layer, and replace the presentation layers entirely. The backend SML processing pipeline is fixed.
+Decision Machine is a three-layer platform. Contributors can build agents at any layer, and replace presentation layers entirely. The backend Scientific Machine Learning (SML) and Decision Machine processing pipeline and API, however, are fixed.
 
 ![Functional Architecture](docs/architecture.png)
 
@@ -186,7 +186,7 @@ The SML-App in this repository is the reference presentation layer. Anything is 
 - The local Flask server (`server.py`) and all UI code
 - The background download agent
 - Documentation and examples
-- Specialized applications for types of time-series (e.g., car insurance defaults, investment decisions, and so on)
+- Specialized applications for different types of time-series (e.g., car insurance defaults, investment decisions, and so on)
 
 *Note: The SML processing Lambda functions and Decision Machine backend infrastructure are proprietary and not part of this repository.*
 
