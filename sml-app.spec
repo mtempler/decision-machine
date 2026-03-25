@@ -17,8 +17,7 @@ a = Analysis(
         ('measurements.html', '.'),
         ('job-plot.html',     '.'),
         ('pdfs-table.html',   '.'),
-        # Bundle config — personalised per tester before build
-        ('sml-app.config',    '.'),
+        ('setup.html',        '.'),
     ],
     hiddenimports=[
         # Flask internals

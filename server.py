@@ -2,7 +2,7 @@
 SML-App Flask server
 Directory layout:
   server.py
-  index.html / measurements.html / job-plot.html
+  index.html / measurements.html / job-plot.html / setup.html
   data/views.json   ← auto-created
   data/jobs.json    ← auto-created
   input/            ← uploaded time-series CSVs
@@ -97,13 +97,46 @@ app = Flask(__name__)
 
 # ── Static ────────────────────────────────────────────
 @app.route('/')
-def root(): return send_from_directory(BASE, 'index.html')
+def root():
+    if not CUSTID or not EMAIL:
+        return send_from_directory(BASE, 'setup.html')
+    return send_from_directory(BASE, 'index.html')
 
 @app.route('/<page>.html')
 def pages(page):
-    allowed = {'index', 'measurements', 'job-plot', 'pdfs-table'}
+    allowed = {'index', 'measurements', 'job-plot', 'pdfs-table', 'setup'}
     if page in allowed: return send_from_directory(BASE, f'{page}.html')
     abort(404)
+
+# ── Setup wizard ──────────────────────────────────────
+@app.route('/api/setup', methods=['POST'])
+def save_setup():
+    """Write sml-app.config from first-launch wizard input."""
+    b      = request.get_json(force=True)
+    custid = b.get('custid', '').strip()
+    email  = b.get('email', '').strip()
+    if not custid: abort(400, 'custid is required')
+    if not email:  abort(400, 'email is required')
+
+    config_content = (
+        f'[identity]\n'
+        f'custid    = {custid}\n'
+        f'auth_mode = cli\n'
+        f'email     = {email}\n\n'
+        f'[storage]\n'
+        f'input_bucket   = customer.decision-machine.com\n'
+        f'output_bucket  = output.customer.decision-machine.com\n'
+        f'watch_path     = downloads\n'
+        f'watch_interval = 30\n'
+        f'agent_interval = 60\n'
+    )
+    try:
+        _cfg_path.write_text(config_content, encoding='utf-8')
+        logging.info(f'Setup wizard: wrote sml-app.config for custid={custid}')
+    except Exception as e:
+        abort(500, f'Failed to write sml-app.config: {e}')
+
+    return jsonify({'status': 'ok', 'custid': custid})
 
 # ── Config endpoint ───────────────────────────────────
 @app.route('/api/config')
@@ -434,12 +467,6 @@ def delete_errorfile(filename):
     p.unlink()
     return '', 204
 
-
-    if '/' in filename or '\\' in filename or '..' in filename: abort(400)
-    p = JOBS / filename
-    if not p.exists() or not p.is_file(): abort(404)
-    return send_file(str(p), mimetype='text/csv')
-
 # ── CSV validation ────────────────────────────────────
 def parse_csv_meta(path):
     DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
@@ -562,7 +589,6 @@ def submit_sml():
         'ini_file':  ini_filename,
         'bucket':    INPUT_BUCKET,
     }), 200
-
 
 
 # ── S3 Download Agent ─────────────────────────────────
@@ -699,7 +725,6 @@ def file_watcher(downloaded_this_session):
             logging.error(f'File watcher: poll error: {e}')
 
         time.sleep(WATCH_INTERVAL)
-
 
 
 # ── Start background threads ──────────────────────────
