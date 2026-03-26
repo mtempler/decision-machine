@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Dictionary — Decision Machine</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:          #06090f;
+    --surface:     #0d1420;
+    --surface2:    #111927;
+    --border:      #1e2d45;
+    --border2:     #253650;
+    --blue:        #2e7eff;
+    --blue-dim:    #1a5abf;
+    --blue-glow:   rgba(46,126,255,0.15);
+    --blue-subtle: rgba(46,126,255,0.07);
+    --text:        #e8edf5;
+    --text-dim:    #8a9ab5;
+    --text-faint:  #4a5c78;
+    --green:       #2de8a0;
+    --amber:       #ffb347;
+    --red:         #ff4d6a;
+    --radius:      12px;
+    --radius-sm:   7px;
+  }
+  :root.light {
+    --bg:          #f0f4fb;
+    --surface:     #ffffff;
+    --surface2:    #e8eef8;
+    --border:      #d0daea;
+    --border2:     #b8c8df;
+    --blue:        #1a6ef5;
+    --blue-dim:    #1458cc;
+    --blue-glow:   rgba(26,110,245,0.12);
+    --blue-subtle: rgba(26,110,245,0.07);
+    --text:        #0f1b2d;
+    --text-dim:    #4a6080;
+    --text-faint:  #8a9eb8;
+    --green:       #0ea572;
+    --amber:       #d97706;
+    --red:         #e8273f;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  header {
+    height: 56px;
+    background: rgba(6,9,15,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  :root.light header { background: rgba(240,244,251,0.92); }
+
+  .logo {
+    display: flex; align-items: center; gap: 9px;
+    font-family: 'DM Serif Display', serif;
+    font-size: 20px; color: var(--text); text-decoration: none;
+  }
+  .logo-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--blue);
+    box-shadow: 0 0 10px var(--blue);
+    animation: pulse 2.5s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 8px var(--blue); }
+    50%      { box-shadow: 0 0 20px var(--blue), 0 0 40px rgba(46,126,255,0.3); }
+  }
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text-faint); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .icon-btn:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+  .version-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--text-faint);
+    border: 1px solid var(--border);
+    padding: 3px 8px; border-radius: 5px;
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+    gap: 40px;
+    min-height: calc(100vh - 56px);
+  }
+
+  /* ── Sidebar ── */
+  nav {
+    padding: 36px 0;
+    position: sticky;
+    top: 56px;
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+  }
+  .nav-section { margin-bottom: 28px; }
+  .nav-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-faint);
+    margin-bottom: 8px; padding-left: 10px;
+  }
+  .nav-link {
+    display: block; padding: 6px 10px; border-radius: 6px;
+    font-size: 13px; color: var(--text-dim); text-decoration: none;
+    transition: all 0.15s;
+  }
+  .nav-link:hover { color: var(--text); background: var(--surface2); }
+  .nav-link.active { color: var(--blue); background: var(--blue-subtle); }
+
+  /* ── Main content ── */
+  main { padding: 36px 0 80px; }
+
+  .page-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 36px; color: var(--text);
+    margin-bottom: 8px;
+  }
+  .page-subtitle {
+    font-size: 14px; color: var(--text-dim);
+    margin-bottom: 40px;
+  }
+
+  /* ── Sections ── */
+  .section { margin-bottom: 56px; }
+  .section-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 24px; color: var(--text);
+    margin-bottom: 6px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-desc {
+    font-size: 13px; color: var(--text-dim);
+    margin-bottom: 20px; line-height: 1.7;
+    max-width: 680px;
+  }
+  .subsection-title {
+    font-size: 13px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-faint); margin: 24px 0 12px;
+  }
+
+  /* ── Info box ── */
+  .info-box {
+    background: var(--blue-subtle);
+    border: 1px solid rgba(46,126,255,0.2);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    font-size: 13px; color: var(--text-dim);
+    line-height: 1.6; margin-bottom: 20px;
+  }
+  .info-box strong { color: var(--text); }
+
+  .warning-box {
+    background: rgba(255,179,71,0.07);
+    border: 1px solid rgba(255,179,71,0.25);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    font-size: 13px; color: var(--text-dim);
+    line-height: 1.6; margin-bottom: 20px;
+  }
+  .warning-box strong { color: var(--amber); }
+
+  /* ── Format table ── */
+  .format-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13px; margin-bottom: 20px;
+  }
+  .format-table th {
+    background: var(--surface2); color: var(--text-dim);
+    font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.06em; padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .format-table td {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    vertical-align: top; color: var(--text);
+  }
+  .format-table tr:last-child td { border-bottom: none; }
+  .format-table tr:hover td { background: var(--surface2); }
+  code {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; color: var(--blue);
+    background: var(--blue-subtle);
+    padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* ── Column cards ── */
+  .column-grid { display: flex; flex-direction: column; gap: 2px; }
+  .column-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .column-card:hover { border-color: var(--border2); }
+  .column-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; cursor: pointer;
+    user-select: none;
+  }
+  .column-name {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px; font-weight: 500; color: var(--blue);
+    min-width: 120px;
+  }
+  .column-summary {
+    font-size: 13px; color: var(--text-dim);
+    flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .column-type {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--text-faint);
+    border: 1px solid var(--border);
+    padding: 2px 7px; border-radius: 4px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .column-chevron {
+    color: var(--text-faint); transition: transform 0.2s; flex-shrink: 0;
+  }
+  .column-card.open .column-chevron { transform: rotate(90deg); }
+  .column-body {
+    display: none; padding: 0 16px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .column-card.open .column-body { display: block; }
+  .column-body p {
+    font-size: 13px; color: var(--text-dim);
+    line-height: 1.7; margin-top: 12px;
+  }
+  .column-body p + p { margin-top: 8px; }
+
+  /* ── CSV example ── */
+  .code-block {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; color: var(--text-dim);
+    overflow-x: auto; margin: 12px 0;
+    white-space: pre;
+  }
+
+  /* ── Gap badge ── */
+  .gap-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .gap-item:last-child { border-bottom: none; }
+  .gap-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amber); margin-top: 6px; flex-shrink: 0;
+  }
+  .gap-text { color: var(--text-dim); }
+  .gap-text strong { color: var(--text); }
+
+  /* ── Note ── */
+  .note-tag {
+    display: inline-block;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--amber);
+    border: 1px solid rgba(255,179,71,0.3);
+    padding: 2px 7px; border-radius: 4px; margin-right: 6px;
+  }
+
+  @media (max-width: 768px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="https://github.com/mtempler/decision-machine" class="logo">
+    <div class="logo-dot"></div>
+    SML &amp; DM
+  </a>
+  <div class="header-right">
+    <span class="version-badge">v1.0</span>
+    <button class="icon-btn" onclick="toggleTheme()" id="themeToggle" title="Toggle theme">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <nav>
+    <div class="nav-section">
+      <div class="nav-label">Input</div>
+      <a href="#input-csv" class="nav-link">Time-Series CSV</a>
+      <a href="#validation" class="nav-link">Validation Rules</a>
+      <a href="#known-gaps" class="nav-link">Known Gaps</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Binary Output</div>
+      <a href="#binary" class="nav-link">Overview</a>
+      <a href="#binary-columns" class="nav-link">Output Columns</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Units Output</div>
+      <a href="#units" class="nav-link">Overview</a>
+      <a href="#units-columns" class="nav-link">Output Columns</a>
+      <a href="#thermodynamics" class="nav-link">Relationships</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Links</div>
+      <a href="https://github.com/mtempler/decision-machine" class="nav-link" target="_blank">GitHub →</a>
+      <a href="https://decision-machine.com/register" class="nav-link" target="_blank">Register →</a>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main>
+    <h1 class="page-title">Data Dictionary</h1>
+    <p class="page-subtitle">Input formats, output columns, and field definitions for the Decision Machine platform.</p>
+
+    <!-- ── Input CSV ── -->
+    <div class="section" id="input-csv">
+      <h2 class="section-title">Input Time-Series CSV</h2>
+      <p class="section-desc">SML-App accepts time-series data as CSV files uploaded through the Time-Series Views panel. Each file represents one or more time-series to be analysed.</p>
+
+      <div class="subsection-title">Format Requirements</div>
+      <table class="format-table">
+        <thead><tr><th>Rule</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>First column</td><td>Date in <code>YYYY-MM-DD</code> format — required on every data row</td></tr>
+          <tr><td>Remaining columns</td><td>Numeric time-series values — at least one required</td></tr>
+          <tr><td>Header row</td><td>Required — first row must contain column names</td></tr>
+          <tr><td>Minimum rows</td><td>At least one data row beyond the header</td></tr>
+          <tr><td>File type</td><td><code>.csv</code> only — <code>.xlsx</code> and other formats are rejected</td></tr>
+          <tr><td>Encoding</td><td>UTF-8 or UTF-8 BOM</td></tr>
+        </tbody>
+      </table>
+
+      <div class="subsection-title">Example</div>
+      <div class="code-block">date,price,volume
+2024-01-01,142.50,1200000
+2024-01-02,143.75,980000
+2024-01-03,141.20,1450000</div>
+
+      <div class="subsection-title" id="validation">Validation Rules</div>
+      <p class="section-desc">SML-App validates the following on upload:</p>
+      <table class="format-table">
+        <thead><tr><th>Check</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Date column present</td><td>All values in column 1 must match <code>YYYY-MM-DD</code></td></tr>
+          <tr><td>Numeric columns present</td><td>At least one column beyond the date column is required</td></tr>
+          <tr><td>Minimum length</td><td>At least one data row required</td></tr>
+          <tr><td>File type</td><td>Only <code>.csv</code> accepted at upload</td></tr>
+        </tbody>
+      </table>
+
+      <div class="subsection-title" id="known-gaps">Known Gaps</div>
+      <div class="warning-box">
+        <strong>Note:</strong> The following validations are not currently performed at upload time and are on the roadmap.
+      </div>
+      <div>
+        <div class="gap-item"><div class="gap-dot"></div><div class="gap-text"><strong>Missing values</strong> — blank cells are not detected at upload. A CSV with missing values will pass validation but may produce a pipeline error during SML processing.</div></div>
+        <div class="gap-item"><div class="gap-dot"></div><div class="gap-text"><strong>Non-numeric data</strong> — text in numeric columns is not validated at upload time.</div></div>
+        <div class="gap-item"><div class="gap-dot"></div><div class="gap-text"><strong>Date gaps</strong> — non-contiguous date sequences are not detected.</div></div>
+      </div>
+    </div>
+
+    <!-- ── Binary ── -->
+    <div class="section" id="binary">
+      <h2 class="section-title">Binary Output</h2>
+      <p class="section-desc">Triggered by submitting a Binary job from the SML Measurements panel. Uses the <code>config_</code> prefix file. Machine learned measurement dynamics in a generally non-equilibrium setting — any time-series of values can be equally well processed.</p>
+
+      <div class="info-box">
+        The output CSV is served by SML-App with an injected header row. The file on disk contains no header — the column names are added at serve time by the local Flask server.
+      </div>
+
+      <div class="subsection-title" id="binary-columns">Output Columns</div>
+      <div class="column-grid">
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">Symbol</span>
+            <span class="column-summary">Time-series identifier</span>
+            <span class="column-type">String</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Time-series identifier derived from the input filename.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">TS</span>
+            <span class="column-summary">Timestamp</span>
+            <span class="column-type">YYYY-MM-DD</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Date of the measurement, corresponding to the input date column.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">value</span>
+            <span class="column-summary">Raw measured value</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>The raw measured value from the input time-series at this timestamp.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">p+</span>
+            <span class="column-summary">Probability of upward movement</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Computed, machine learned probability that the value will go up in the next time step. Computed exactly up to machine error.</p>
+            <p>The probability is a function of the system energy and process extent (Lagrange multiplier).</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">p-</span>
+            <span class="column-summary">Probability of downward or flat movement</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Computed, machine learned probability that the value will go down or stay the same in the next time step. Computed exactly up to machine error.</p>
+            <p>The probability is a function of the system energy and process extent (Lagrange multiplier).</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">energy</span>
+            <span class="column-summary">System energy from equilibrium</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Computed, machine learned system energy measured from equilibrium as a zero offset. Positive: Bull. Negative: Bear. Internally generated energy could include emotions (plural) — human-generated displacement energy from equilibrium.</p>
+            <p>At equilibrium, the probability that an asset price will go up equals the probability that it won't (an "unbiased coin"). Markets are driven by emotions which throw participants into non-equilibrium almost all of the time. The energy/emotions measurement quantifies how far away the data is from statistical equilibrium.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">power</span>
+            <span class="column-summary">Rate of energy flow per time step</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Rate of energy flow per time step. Combines Emotion and Resistance. At equilibrium, Power = Emotion² / R (V²/2R). Power is the energy available to perform work — "to move the needle".</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">resistance</span>
+            <span class="column-summary">Market resistance to changing price</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Wherever there is energy available to move the needle, there is also resistance. The more resistance, the harder it is to move the needle. Resistance is not constant in systems that are not in equilibrium.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">noise</span>
+            <span class="column-summary">Nyquist noise dissipating system energy</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Computed, machine learned market (Nyquist) noise that dissipates system energy so that it cannot be used for price movement. Power can be wasted through dissipation (strain or viscosity), making it unavailable to do work. As noise increases, the amount of wasted power increases.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">T</span>
+            <span class="column-summary">Entropic temperature of the system</span>
+            <span class="column-type">Alpha-numeric</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>The entropic temperature of the system. Temperature is the reciprocal of the derivative of entropy with respect to energy — the general definition of entropic temperature.</p>
+            <p>In non-equilibrium dynamics, free energy and temperature are coupled to produce a heat engine. By observing free energy and temperature together, price entry and exit points can be identified. Recommended to plot as a double-sided plot alongside free energy.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">FE</span>
+            <span class="column-summary">Helmholtz free energy</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Helmholtz free energy (F = E − TS). The total energy/emotion available to do useful work. Minimum Free Energy is a more convenient form of maximum entropy in non-equilibrium problems.</p>
+            <p>When free energy decreases it does work in the dominant emotion (bull or bear). Local maxima indicate when energy is available for price movement — an entry point. After the price movement a local minimum develops, equivalent to maximum entropy. The stable minimum signifies an exit point for the dominant emotion trade.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">therm_p+</span>
+            <span class="column-summary">Thermal probability of upward movement</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Computed, machine learned probability that the value will go up in the next time step when in a thermal bath of temperature T_R. Where thermal probabilities dominate over p+ and p-, thermal probabilities drive price movement.</p>
+            <p>The thermal probabilities depend on the temperature difference between the system temperature and the reservoir temperature T_R. Decision Machine uses a default value for T_R at statistical equilibrium (T_R = e/4) but it can and should be set by the customer in the configuration file.</p>
+            <p>A dissipative system is a thermodynamically open system operating out of, and often far from, statistical or thermal equilibrium, exchanging energy and information with its environment.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">therm_p-</span>
+            <span class="column-summary">Thermal probability of downward or flat movement</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Computed, machine learned probability that the value will not go up in the next time step when in a thermal bath of temperature T_R. See <code>therm_p+</code> for full description of thermal probabilities and dissipative systems.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Units ── -->
+    <div class="section" id="units">
+      <h2 class="section-title">Units Output</h2>
+      <p class="section-desc">Triggered by submitting a Units job from the SML Measurements panel. Uses the <code>measure_</code> prefix file. Scientific measurements of time-series dynamics based on the science of counting — counting units of measure with constraints on maximum entropy.</p>
+
+      <div class="warning-box">
+        <span class="note-tag">Note</span> The column definitions below represent the <strong>intended end state</strong> of the Units output. The current pipeline produces a superset of scientific measurements; the columns below reflect the target reporting set.
+      </div>
+
+      <div class="subsection-title" id="units-columns">Output Columns</div>
+      <div class="column-grid">
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">Symbol</span>
+            <span class="column-summary">Time-series identifier</span>
+            <span class="column-type">String</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Time-series identifier derived from the input filename.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">TS</span>
+            <span class="column-summary">Timestamp</span>
+            <span class="column-type">YYYY-MM-DD</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Date of the measurement, corresponding to the input date column.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">value</span>
+            <span class="column-summary">Raw measured value</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>The raw measured value from the input time-series at this timestamp.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">p</span>
+            <span class="column-summary">Momentum</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Momentum measures the inertia of the time-series. As momentum increases, greater force is needed to produce a given deviation from the current direction.</p>
+            <p>When displacement velocity vanishes (v = 0), momentum equals the mass (p = m). When E ≠ 0, p = m·exp(v). Note: momentum is non-linear and not equal to mv.</p>
+            <p>Dispersion relations define the algebraic relationships between mass, momentum, and displacement energy measured from equilibrium.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">E</span>
+            <span class="column-summary">Displacement energy from equilibrium</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>The energy at equilibrium is subtracted from the total system energy to give the displacement energy. When E = 0, the system is in equilibrium — all states are equally likely, with no energy entering or exiting the system. When E ≠ 0, energy enters (E &gt; 0) or exits (E &lt; 0). Non-zero displacement energy signals non-equilibrium behavior.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">T</span>
+            <span class="column-summary">Entropic temperature</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>The entropic temperature of the system.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">T_B</span>
+            <span class="column-summary">Body temperature — reservoir temperature</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body">
+            <p>Body temperature of the system — same as the reservoir temperature. Thermodynamic expressions define relationships between E, free energy, T, free entropy, and T_B through the second law: ⟨F⟩ ≡ T⟨A⟩/T_B = E − TS, offset from equilibrium.</p>
+            <p>When in thermal equilibrium, T = T_B and classical thermodynamics is regained. Equilibrium is not assumed and is infrequently observed in time-series.</p>
+          </div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">exp_n</span>
+            <span class="column-summary">Expected Supply ⟨ξ⟩</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Expected Supply ⟨ξ⟩. Combines the expected count and the expected strain (energy stored in extension). Defined by the affine connection as part of Natural Dynamics.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">exp_strain</span>
+            <span class="column-summary">Expected strain component of supply</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Expected strain component of the supply measurement.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">exp_demand</span>
+            <span class="column-summary">Expected Demand ⟨η⟩</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Expected Demand ⟨η⟩. The expected value minus the expected strain — an extension that stores energy. Defined by the affine connection as part of Natural Dynamics.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">sus_n</span>
+            <span class="column-summary">Sustained supply count</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Sustained supply count.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">sus_strain</span>
+            <span class="column-summary">Sustained strain component</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Sustained strain component.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">sus_E</span>
+            <span class="column-summary">Sustained displacement energy</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Sustained displacement energy.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">sus_demand</span>
+            <span class="column-summary">Sustained demand</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Sustained demand.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">var_n</span>
+            <span class="column-summary">Variance of supply count</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Variance of supply count.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">var_strain</span>
+            <span class="column-summary">Variance of strain</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Variance of strain.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">var_E</span>
+            <span class="column-summary">Variance of displacement energy</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Variance of displacement energy.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">var_del_n</span>
+            <span class="column-summary">Variance of change in supply count</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Variance of change in supply count.</p></div>
+        </div>
+
+        <div class="column-card">
+          <div class="column-header" onclick="toggle(this)">
+            <span class="column-name">cov_n_strain</span>
+            <span class="column-summary">Covariance of supply count and strain</span>
+            <span class="column-type">Float, 4 d.p.</span>
+            <svg class="column-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="column-body"><p>Covariance of supply count and strain.</p></div>
+        </div>
+
+      </div>
+
+      <div class="subsection-title" id="thermodynamics">Thermodynamic Relationships</div>
+      <div class="info-box">
+        <strong>Free entropy:</strong> ⟨M⟩ = S − E/T (Massieu free entropy). The slope of the free entropy equals −F, the force due to the potential.<br><br>
+        <strong>Free energy:</strong> ⟨F⟩ ≡ T⟨A⟩/T_B = E − TS, offset from equilibrium.<br><br>
+        <strong>Entropy:</strong> S(λ,E) — the number of different counting configurations possible when subjected to the constraints of counting the time-series. A function of the Lagrange multiplier λ and displacement energy E. In general, S and entropic temperature 1/T = ∂S/∂E are not constant.
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+function toggle(header) {
+  header.closest('.column-card').classList.toggle('open');
+}
+
+const moonSVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`;
+const sunSVG  = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m8.66-9h-1M4.34 12h-1m15.07-6.07-.7.7M6.34 17.66l-.7.7m12.02 0-.7-.7M6.34 6.34l-.7-.7M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>`;
+
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.classList.add('light');
+    document.getElementById('themeToggle').innerHTML = moonSVG;
+  } else {
+    document.documentElement.classList.remove('light');
+    document.getElementById('themeToggle').innerHTML = sunSVG;
+  }
+  localStorage.setItem('dm_theme', theme);
+}
+function toggleTheme() {
+  applyTheme(document.documentElement.classList.contains('light') ? 'dark' : 'light');
+}
+applyTheme(localStorage.getItem('dm_theme') || 'dark');
+
+// Active nav on scroll
+const sections = document.querySelectorAll('.section');
+const navLinks = document.querySelectorAll('.nav-link');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 100) current = s.id; });
+  navLinks.forEach(l => {
+    l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+  });
+});
+</script>
+</body>
+</html>
