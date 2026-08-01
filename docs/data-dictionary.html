@@ -361,9 +361,9 @@
         <thead><tr><th>Rule</th><th>Detail</th></tr></thead>
         <tbody>
           <tr><td>First column</td><td>Date in <code>YYYY-MM-DD</code> format — required on every data row</td></tr>
-          <tr><td>Remaining columns</td><td>Numeric time-series values — at least one required</td></tr>
+          <tr><td>Remaining columns</td><td>Numeric time-series values — at least one column required, maximum of 25</td></tr>
           <tr><td>Header row</td><td>Required — first row must contain column names</td></tr>
-          <tr><td>Minimum rows</td><td>At least one data row beyond the header</td></tr>
+          <tr><td>Minimum rows</td><td>At least fifty rows beyond the header</td></tr>
           <tr><td>File type</td><td><code>.csv</code> only — <code>.xlsx</code> and other formats are rejected</td></tr>
           <tr><td>Encoding</td><td>UTF-8 or UTF-8 BOM</td></tr>
         </tbody>
@@ -381,8 +381,8 @@
         <thead><tr><th>Check</th><th>Detail</th></tr></thead>
         <tbody>
           <tr><td>Date column present</td><td>All values in column 1 must match <code>YYYY-MM-DD</code></td></tr>
-          <tr><td>Numeric columns present</td><td>At least one column beyond the date column is required</td></tr>
-          <tr><td>Minimum length</td><td>At least one data row required</td></tr>
+          <tr><td>Numeric columns present</td><td>At least one column beyond the date column is required, with a maximum of 25 columns</td></tr>
+          <tr><td>Minimum length</td><td>At least 50 data rows required</td></tr>
           <tr><td>File type</td><td>Only <code>.csv</code> accepted at upload</td></tr>
         </tbody>
       </table>

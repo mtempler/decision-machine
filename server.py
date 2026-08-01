@@ -592,11 +592,40 @@ def submit_sml():
 
 
 # ── S3 Download Agent ─────────────────────────────────
+def _s3_delete_with_retry(s3, bucket, key, filename, max_retries=3):
+    """
+    Delete a file from S3 after successful download. Retries up to max_retries
+    times with exponential backoff (2s, 4s, 8s). Logs a warning and moves on
+    if all retries are exhausted — the file is safely local regardless.
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            s3.delete_object(Bucket=bucket, Key=key)
+            logging.info(f'S3 agent: deleted {filename} from s3://{bucket}/{key}')
+            return True
+        except Exception as e:
+            wait = 2 ** attempt  # 2s, 4s, 8s
+            if attempt < max_retries:
+                logging.warning(
+                    f'S3 agent: delete failed for {filename} (attempt {attempt}/{max_retries}), '
+                    f'retrying in {wait}s: {e}'
+                )
+                time.sleep(wait)
+            else:
+                logging.warning(
+                    f'S3 agent: delete failed for {filename} after {max_retries} attempts — '
+                    f'file is safely local, continuing: {e}'
+                )
+    return False
+
+
 def s3_download_agent(downloaded_this_session):
     """
     Background thread. Polls output S3 bucket for new files belonging to this
-    custid and downloads them to WATCH_PATH. Only downloads files not already
-    present on disk. Runs every AGENT_INTERVAL seconds.
+    custid and downloads them to WATCH_PATH. After each successful download the
+    file is deleted from S3 — this is the security pledge (processing complete =
+    file downloaded) and prevents re-download on subsequent polls.
+    Runs every AGENT_INTERVAL seconds.
     CLI mode: boto3 uses ambient ~/.aws/credentials.
     """
     if not CUSTID:
@@ -647,6 +676,7 @@ def s3_download_agent(downloaded_this_session):
                             existing_err.add(filename)
                             downloaded_this_session.add('errors/' + filename)
                             downloaded += 1
+                            _s3_delete_with_retry(s3, OUTPUT_BUCKET, key, filename)
                         except Exception as e:
                             logging.error(f'S3 agent: failed to download {key}: {e}')
                         continue
@@ -666,6 +696,7 @@ def s3_download_agent(downloaded_this_session):
                         existing_csv.add(filename)
                         downloaded_this_session.add(filename)
                         downloaded += 1
+                        _s3_delete_with_retry(s3, OUTPUT_BUCKET, key, filename)
                     except Exception as e:
                         logging.error(f'S3 agent: failed to download {key}: {e}')
 

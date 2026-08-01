@@ -12,9 +12,9 @@ Decision Machine is a pipeline system to upload, visualize, and submit time-seri
 Upload a time-series CSV  →  Review in the plot viewer  →  Submit for SML processing  →  Explore results
 ```
 
-- **Views** — upload, cleanse and organize your time-series data into named views with categories and notes  
+- **Views** — organize your time-series data into named views with categories and notes
+- **Measurements** — interactive time-series plotter with date range selection
 - **SML Processing** — submit Binary or Units analysis jobs; results appear automatically when ready
-- **Measurements** — interactive time-series plotter for SML measurements
 - **Decision Machine** — tabular viewer for DM output reports
 - **File management** — archive, restore, and delete output files directly from the dashboard
 
@@ -73,6 +73,31 @@ SML-App runs a local Flask server on `localhost:5000`. Your time-series CSVs are
 2. A Lambda function processes the data and writes results back to S3
 3. A background agent on your machine downloads the results automatically
 4. Results appear in the dashboard within minutes
+
+---
+
+## AWS CLI Setup (CLI mode users)
+
+SML-App uses your existing AWS credentials to submit jobs to the Decision Machine pipeline. Before you can submit jobs, you need to add an `AssumeRole` permission to your AWS IAM user.
+
+**Step 1 — Contact us with your AWS Account ID**
+
+Email [support@decision-machine.com](mailto:support@decision-machine.com) with your 12-digit AWS Account ID. We will add it to the trust policy of the `SMLAppCLIUser` role on our side.
+
+**Step 2 — Add the following policy to your AWS IAM user**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "sts:AssumeRole",
+    "Resource": "arn:aws:iam::741600857758:role/SMLAppCLIUser"
+  }]
+}
+```
+
+Once both steps are complete, SML-App will use this role to access the Decision Machine S3 buckets securely using your existing credentials (`~/.aws/credentials`).
 
 ---
 
@@ -165,19 +190,26 @@ Your AWS credentials need the following permissions:
 
 ---
 
+## Documentation
+
+- **[Data Dictionary](https://mtempler.github.io/decision-machine/data-dictionary.html)** — input CSV format, Binary output columns, and Units output columns with full field definitions
+- **[Onboarding Architecture](docs/onboarding-architecture.md)** — registration pipeline design
+
+---
+
 ## Contributing
 
 Contributions are welcome and appreciated — this is an open-source client for an active platform, and there's meaningful work to be done.
 
 ### Architecture
 
-Decision Machine is a three-layer platform. Contributors can build agents at any layer, and replace presentation layers entirely. The backend Scientific Machine Learning (SML) and Decision Machine processing pipeline and API, however, are fixed.
+Decision Machine is a three-layer platform. Contributors can build agents at any layer, or replace the presentation layer entirely. The backend SML processing pipeline is fixed.
 
 ![Functional Architecture](docs/architecture.png)
 
-- **Measurement Agents** — feed time-series into Precision Insight (Scientific Machine Learning, SML) for scientific measurement for state calculation, trajectory planning, and trajectory control
-- **Decision Machine** — sits above that, producing decisions around levels, risk, and allocations that can be concluded using SML measurements
-- **Control Agents** — execute user control actions on the demand and supply levers for trajectory control
+- **Measurement Agents** — feed time-series into the Precision Insight (Scientific ML) layer, which handles state calculation, trajectory planning, and trajectory control
+- **Decision Machine** — sits above that, producing decisions around levels, risk, and allocation
+- **Control Agents** — execute user control actions on the demand and supply levers
 - **Decision Agents** — sit at the top, consuming DM output to drive automated decisions
 
 The SML-App in this repository is the reference presentation layer. Anything is permitted to replace it.
@@ -185,17 +217,16 @@ The SML-App in this repository is the reference presentation layer. Anything is 
 **What's open for contribution:**
 - The local Flask server (`server.py`) and all UI code
 - The background download agent
+- Build tooling (`build.bat`, PyInstaller config)
 - Documentation and examples
-- Specialized applications for different types of time-series (e.g., car insurance defaults, investment decisions, and so on)
 
 *Note: The SML processing Lambda functions and Decision Machine backend infrastructure are proprietary and not part of this repository.*
 
 **Where help is most wanted right now:**
 - 🍎 **macOS port** — the biggest item on the roadmap; Python/Flask experience helpful
-- 🧪 **Testing** — unit and integration tests can be improved; pytest contributions welcome
+- 🧪 **Test automation** — a comprehensive manual regression suite exists (see `docs/SML-App-Regression-Tests.docx`); help automating sections 1–5 and 7 with pytest or Playwright would be valuable (sections 6 and 8 require live AWS/Stripe credentials)
 - 🎨 **UI improvements** — the frontend is functional but unpolished
 - 📖 **Docs** — usage examples, tutorials, and annotated screenshots
-- innovative usage
 
 **Getting started:**
 1. Follow the [build from source](#option-2--build-from-source) instructions
