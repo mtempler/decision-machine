@@ -1,0 +1,280 @@
+---
+layout: null
+permalink: /decision-machine/register-training.html
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get SML-T — Fides et Ratio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7f6f4;
+    --surface: #ffffff;
+    --surface2: #f0efec;
+    --border: #d8d6d1;
+    --border2: #c6c3bd;
+    --slate: #708090;       /* fides-ratio grey */
+    --slate-dark: #55626e;
+    --slate-glow: rgba(112,128,144,0.14);
+    --text: #23272b;
+    --text-dim: #5b6570;
+    --text-faint: #8d95a0;
+    --green: #4a8a6f;
+    --red: #b3453f;
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    background: rgba(247,246,244,0.92);
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-inner { max-width: 900px; margin: 0 auto; height: 64px; display: flex; align-items: center; }
+  .logo {
+    font-family: 'DM Serif Display', serif;
+    font-size: 20px;
+    color: var(--text);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--slate); }
+
+  /* ── MAIN ── */
+  main { flex: 1; max-width: 540px; margin: 0 auto; padding: 60px 24px 80px; width: 100%; }
+
+  .eyebrow {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--slate-dark); margin-bottom: 14px;
+  }
+  h1 { font-family: 'DM Serif Display', serif; font-size: 36px; margin-bottom: 12px; color: var(--text); }
+  .subtitle { font-size: 15px; color: var(--text-dim); line-height: 1.6; margin-bottom: 40px; }
+
+  /* ── FORM CARD ── */
+  .form-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(35,39,43,0.04);
+  }
+  .form-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--slate), rgba(112,128,144,0.25), transparent);
+  }
+
+  .form-group { margin-bottom: 20px; }
+  .form-label {
+    display: block; font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 7px;
+  }
+  .form-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .form-input:focus { border-color: var(--slate); box-shadow: 0 0 0 3px var(--slate-glow); }
+  .form-input::placeholder { color: var(--text-faint); }
+
+  .form-hint { font-size: 12px; color: var(--text-faint); margin-top: 5px; line-height: 1.5; }
+
+  .btn-primary {
+    width: 100%;
+    padding: 12px 20px;
+    border-radius: var(--radius-sm);
+    background: var(--slate);
+    border: none;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-primary:hover { background: var(--slate-dark); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg { font-size: 13px; color: var(--red); margin-top: 14px; display: none; }
+  .error-msg.show { display: block; }
+
+  /* ── SUCCESS PANEL ── */
+  .success-panel { display: none; text-align: center; padding: 16px 0; }
+  .success-panel.show { display: block; }
+  .success-icon { font-size: 36px; margin-bottom: 16px; color: var(--slate); }
+  .success-title { font-family: 'DM Serif Display', serif; font-size: 24px; margin-bottom: 10px; }
+  .success-body { font-size: 14px; color: var(--text-dim); line-height: 1.7; }
+  .success-custid {
+    display: inline-block; margin: 16px 0; padding: 8px 16px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font-family: 'DM Mono', monospace;
+    font-size: 16px; color: var(--slate-dark); font-weight: 500;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align: center; padding: 24px; font-size: 12px;
+    color: var(--text-faint); border-top: 1px solid var(--border);
+  }
+  footer a { color: var(--text-faint); }
+
+  @media (max-width: 600px) {
+    header { padding: 0 16px; }
+    main { padding: 40px 16px 60px; }
+    h1 { font-size: 28px; }
+    .form-card { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a href="https://fides-ratio.com/index.html" class="logo">
+      <div class="logo-dot"></div>
+      Fides et Ratio
+    </a>
+  </div>
+</header>
+
+<main>
+  <div class="eyebrow">Human Intelligence (HI)</div>
+  <h1>Get SML-T</h1>
+  <p class="subtitle">Register to receive your personalised SML-T training app for Windows. Your download link will be emailed to you.</p>
+
+  <div class="form-card">
+
+    <div id="formSection">
+      <div class="form-group">
+        <label class="form-label" for="email">Email *</label>
+        <input class="form-input" type="email" id="email" placeholder="you@example.com" autocomplete="email">
+        <div class="form-hint">Your download link will be sent here.</div>
+      </div>
+
+      <div class="error-msg" id="errorMsg"></div>
+
+      <button class="btn-primary" id="submitBtn" onclick="submitForm()">
+        Register &amp; Get SML-T
+      </button>
+    </div>
+
+    <div class="success-panel" id="successPanel">
+      <div class="success-icon">✉️</div>
+      <div class="success-title">Check your inbox</div>
+      <div class="success-body">
+        Your personalised SML-T is being built.<br>
+        A download link will be sent to<br>
+        <strong id="successEmail"></strong><br>
+        within a few minutes.<br><br>
+        Your customer ID will be included in the email.<br>
+        Keep it — you'll need it when you register for SML-App.
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  By registering you agree to our <a href="https://decision-machine.com/terms">terms of service</a>.
+</footer>
+
+<script>
+const API_URL = 'https://ozlu4ctig8.execute-api.us-east-1.amazonaws.com/prod/register-training';
+
+async function submitForm() {
+  const email   = document.getElementById('email').value.trim();
+  const errorEl = document.getElementById('errorMsg');
+  const btn     = document.getElementById('submitBtn');
+
+  errorEl.classList.remove('show');
+
+  if (!email) {
+    errorEl.textContent = 'Please enter your email address.';
+    errorEl.classList.add('show');
+    return;
+  }
+  if (!email.includes('@')) {
+    errorEl.textContent = 'Please enter a valid email address.';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Building your app…';
+
+  try {
+    const res = await fetch(API_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Registration failed. Please try again.';
+      errorEl.classList.add('show');
+      btn.disabled = false;
+      btn.innerHTML = 'Register &amp; Get SML-T';
+      return;
+    }
+
+    document.getElementById('successEmail').textContent = email;
+    document.getElementById('formSection').style.display = 'none';
+    document.getElementById('successPanel').classList.add('show');
+
+  } catch(e) {
+    errorEl.textContent = 'Could not connect. Please check your connection and try again.';
+    errorEl.classList.add('show');
+    btn.disabled = false;
+    btn.innerHTML = 'Register &amp; Get SML-T';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement.id === 'email') submitForm();
+});
+</script>
+</body>
+</html>
