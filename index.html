@@ -517,6 +517,32 @@
   .spinner { width: 26px; height: 26px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Auth warning banner — persistent, appears below header when AssumeRole/Cognito auth is failing */
+  .auth-banner {
+    display: none;
+    align-items: center; gap: 10px;
+    background: rgba(255,77,106,0.1); border-bottom: 1px solid var(--red);
+    color: var(--red); font-size: 13px; padding: 10px 32px;
+  }
+  .auth-banner.show { display: flex; }
+  .auth-banner svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .auth-banner-text { flex: 1; }
+  .auth-banner-detail { color: var(--text-dim); font-size: 12px; margin-top: 1px; }
+  .auth-banner-pw-form { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .auth-banner-pw-form input {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 13px; padding: 6px 10px; outline: none;
+    font-family: 'DM Sans', sans-serif; width: 200px;
+  }
+  .auth-banner-pw-form input:focus { border-color: var(--red); }
+  .auth-banner-btn {
+    background: transparent; border: 1px solid var(--red); color: var(--red);
+    border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  }
+  .auth-banner-btn:hover:not(:disabled) { background: rgba(255,77,106,0.12); }
+  .auth-banner-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
   @media (max-width: 960px) {
     header { padding: 0 16px; }
     main { padding: 18px 14px 60px; }
@@ -553,6 +579,19 @@
     </div>
   </div>
 </header>
+
+<div class="auth-banner" id="authBanner">
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-8.99 3.75h.008v.008h-.008v-.008z"/></svg>
+  <div style="flex:1;">
+    <div class="auth-banner-text">Your Cognito password needs to be reset before AWS features work again — this can happen after an account-wide security reset.</div>
+    <div class="auth-banner-pw-form">
+      <input type="password" id="authNewPassword" placeholder="New password" autocomplete="new-password">
+      <input type="password" id="authNewPasswordConfirm" placeholder="Confirm new password" autocomplete="new-password">
+      <button class="auth-banner-btn" id="authChangePwBtn" onclick="submitPasswordChange()">Set new password</button>
+    </div>
+    <div class="auth-banner-detail" id="authBannerPwError"></div>
+  </div>
+</div>
 
 <main>
   <div class="stats-bar" id="statsBar"></div>
@@ -1331,8 +1370,12 @@ async function submitSmlJob() {
       })
     });
     if (!res.ok) {
-      const msg = await res.text().catch(() => res.statusText);
-      throw new Error(msg);
+      const data = await readErrorBody(res);
+      if (data.password_change_required) {
+        showPasswordChangeBanner();
+        throw new Error('Cognito requires a new password — set one above, then try again.');
+      }
+      throw new Error(data.error || res.statusText);
     }
     const result = await res.json();
     closeModal('smlModal');
@@ -1600,7 +1643,63 @@ async function loadCustomerId() {
   }
 }
 
-function openTsuModal() {
+// ── PASSWORD CHANGE REQUIRED (reactive — never polled) ──
+// Only ever triggered by a failed Submit Job / TSU balance / TSU request
+// response that reports password_change_required: true. No background check.
+async function readErrorBody(res) {
+  try { return await res.json(); }
+  catch {
+    try { return { error: await res.text() }; }
+    catch { return {}; }
+  }
+}
+function showPasswordChangeBanner() {
+  document.getElementById('authBanner').classList.add('show');
+}
+function hidePasswordChangeBanner() {
+  document.getElementById('authBanner').classList.remove('show');
+  document.getElementById('authBannerPwError').textContent = '';
+}
+
+async function submitPasswordChange() {
+  const pw1   = document.getElementById('authNewPassword').value;
+  const pw2   = document.getElementById('authNewPasswordConfirm').value;
+  const errEl = document.getElementById('authBannerPwError');
+  const btn   = document.getElementById('authChangePwBtn');
+  errEl.textContent = '';
+
+  if (!pw1) { errEl.textContent = 'Enter a new password.'; return; }
+  if (pw1 !== pw2) { errEl.textContent = 'Passwords do not match.'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Setting…';
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ new_password: pw1 })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    document.getElementById('authNewPassword').value = '';
+    document.getElementById('authNewPasswordConfirm').value = '';
+    hidePasswordChangeBanner();
+    showToast('Password updated — try your action again', 'success');
+  } catch(e) {
+    errEl.textContent = 'Failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Set new password';
+  }
+}
+
+async function openTsuModal() {
+  // Re-check on click rather than trusting a possibly-stale background load —
+  // this is the actual "invoke the backend" moment for TSU balance/request.
+  await loadTsuBalance();
+  if (_tsuPasswordChangeRequired) {
+    showPasswordChangeBanner();
+    return;
+  }
   const balance = _tsuBalance;
   const balEl   = document.getElementById('tsuModalBalance');
   balEl.textContent = balance !== null ? balance.toLocaleString() + ' TSUs' : 'Not yet funded';
@@ -1634,7 +1733,14 @@ async function submitTsuModalRequest() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quantity })
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const data = await readErrorBody(res);
+      if (data.password_change_required) {
+        showPasswordChangeBanner();
+        throw new Error('Cognito requires a new password — set one above, then try again.');
+      }
+      throw new Error(data.error || res.statusText);
+    }
     const data = await res.json();
     sucEl.textContent = `✓ Invoice requested for ${data.quantity.toLocaleString()} TSUs — sent to ${data.email}`;
     sucEl.classList.add('show');
@@ -1657,6 +1763,8 @@ let _tsuEmail   = '';
 
 function getTsuBalance() { return _tsuBalance; }
 
+let _tsuPasswordChangeRequired = false;
+
 async function loadTsuBalance() {
   try {
     const res = await fetch('/api/tsu/balance');
@@ -1664,7 +1772,11 @@ async function loadTsuBalance() {
       const data = await res.json();
       _tsuBalance = data.balance;
       _tsuEmail   = data.email || '';
+      _tsuPasswordChangeRequired = !!data.password_change_required;
       updateTsuBadge();
+      // Note: this can run automatically at page load (badge refresh) — the banner
+      // is only ever shown when the customer actually clicks into the TSU modal
+      // (openTsuModal) or tries to submit something, never from this silent poll.
     }
   } catch(e) {
     console.warn('Could not load TSU balance:', e);
@@ -1754,7 +1866,14 @@ async function submitTsuRequest() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quantity })
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const data = await readErrorBody(res);
+      if (data.password_change_required) {
+        showPasswordChangeBanner();
+        throw new Error('Cognito requires a new password — set one above, then try again.');
+      }
+      throw new Error(data.error || res.statusText);
+    }
     const data = await res.json();
     sucEl.textContent = `✓ Invoice requested for ${data.quantity.toLocaleString()} TSUs — sent to ${data.email}`;
     sucEl.classList.add('show');

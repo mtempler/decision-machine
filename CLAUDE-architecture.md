@@ -11,14 +11,17 @@ SML-App is a distributed system spanning customer premises and AWS infrastructur
 ```
 Customer Premises                         AWS
 ──────────────────────────────────────    ────────────────────────────────────
-SML-App (Flask + background threads)      IAM — SMLAppCLIUser role
-  Views, Dashboard, DM viewer               Per-custid scoping via session tags
-  Job submission (TSU-gated)               Onboard: add account ID to trust policy
-  Job result display                       Offboard: remove account ID
+SML-App (Flask + background threads)      Cognito — Decision Machine User Pool
+  Views, Dashboard, DM viewer                One user per custid (custom:custid attribute)
+  Job submission (TSU-gated)                 pycognito SRP auth; password in OS keychain
+  Job result display                         (never written to disk)
   TSU balance display + request flow
-  S3 Download Agent (background thread)   Cognito — Decision Machine User Pool (planned)
-  File Watcher (background thread)          One identity per custid
-  Warning banner if role assumption fails   Issues scoped temporary credentials
+  S3 Download Agent (background thread)    Cognito Identity Pool
+  File Watcher (background thread)           ABAC: custid claim → PrincipalTag
+  Persistent auth banner (polled 60s)        Issues scoped temporary AWS credentials
+  if Cognito authentication fails
+                                            IAM — SMLAppCognitoUser role (shared)
+                                              Per-custid scoping via PrincipalTag condition
 
                                           S3 — customer.decision-machine.com
                                             OnDemand/
@@ -42,9 +45,25 @@ SML-App (Flask + background threads)      IAM — SMLAppCLIUser role
                                             amount, reference, ts, balance
 
                                           Lambda — OnDemand (SML + DM processing)
-                                            Triggered by .ini upload
+                                            Triggered by config_/measure_/pdfs_ .ini upload
                                             Processes data, writes output or error
                                             Untouched by TSU system
+
+                                          EventBridge — default event bus
+                                            Rule: S3 Object Created on OnDemand/var_*
+                                            Target: OnDemand_VaR State Machine
+                                            Input transformation: S3 Records format
+
+                                          Step Functions — OnDemand_VaR State Machine
+                                            Triggered by EventBridge on var_ .ini upload
+                                            Orchestrates VaR + EWS workflow steps
+                                            Enables retry, branching, future expansion
+                                            IAM role: OnDemand_VaR-role / dm_var_policy
+
+                                          Lambda — VaR Calculation (step in OnDemand_VaR)
+                                            Computes VaR, EWS assessment
+                                            Writes output CSV + .meta companion file
+                                            Layer: Klayers scipy (Python 3.12)
 
                                           Lambda — TSU-Request
                                             Triggered by TSURequest_*.txt upload
@@ -86,6 +105,10 @@ SML-App/
   measurements.html       ← time-series plotter
   job-plot.html           ← SML output chart
   pdfs-table.html         ← DM output viewer
+  setup.html              ← first-launch wizard (custid/email/password/region)
+  cognito-regions.json    ← region → {user_pool_id, client_id, identity_pool_id} map;
+                             refreshed every launch like the HTML, not preserved like
+                             sml-app.config — see Authentication & Access
   data/
     views.json            ← view and series metadata
   input/                  ← uploaded time-series CSVs (with headers, uuid-prefixed)
@@ -113,7 +136,8 @@ Two separate buckets — input and output are never co-located (AWS anti-pattern
 s3://customer.decision-machine.com/
   OnDemand/
     {descriptor}.csv                        ← uploaded first, header row stripped
-    {config_|measure_}{descriptor}.ini      ← uploaded second — triggers OnDemand Lambda
+    {config_|measure_|pdfs_}{descriptor}.ini ← uploaded second — triggers OnDemand Lambda
+    var_{descriptor}.ini                    ← uploaded second — triggers EventBridge → OnDemand_VaR State Machine
     TSURequest_{custid}_{timestamp}.txt     ← triggers TSU-Request Lambda; deleted after processing
 ```
 
@@ -123,6 +147,7 @@ s3://customer.decision-machine.com/
 s3://output.customer.decision-machine.com/
   {custid}/
     {custid}_{slug}_{process}_{descriptor}_{info}_TSU_{n}.csv  ← SML/DM output
+    {custid}_{slug}_{process}_{descriptor}_{info}_TSU_{n}.meta  ← companion metadata (EWS)
     ERROR_{data_filename}_{timestamp}.txt                       ← pipeline error
 ```
 
@@ -203,24 +228,15 @@ Both client (SML modal) and server (`/submit_sml` HTTP 402) enforce blocking.
 
 ## Metadata Files
 
-Two `.ini` formats, one per SML process type. The data file is uploaded first (header stripped); the `.ini` is uploaded second and triggers OnDemand Lambda.
+All `.ini` formats share the same three infrastructure lines in `[Default]`. Lines below those three are contractual values specific to the workflow — they are immutable once deployed. A new contract value requires a new workflow prefix (and a new EventBridge rule and State Machine). The data file is uploaded first (header stripped); the `.ini` is uploaded second and triggers processing.
 
-### config\_{descriptor}.ini — Binary Process
-
-```ini
-[Default]
-FileOutput   = output.customer.decision-machine.com/{custid}
-Measurements = A,AA,AAMI,AAP,...
-Crumbs       = {custid}_{slug}_binary
-```
-
-### measure\_{descriptor}.ini — Science-of-Counting (Units) Process
+### Shared infrastructure lines (all formats)
 
 ```ini
 [Default]
 FileOutput   = output.customer.decision-machine.com/{custid}
 Measurements = A,AA,AAMI,AAP,...
-Crumbs       = {custid}_{slug}_units
+Crumbs       = {custid}_{slug}_{process}
 ```
 
 | Field | Description |
@@ -229,44 +245,153 @@ Crumbs       = {custid}_{slug}_units
 | `Measurements` | Comma-separated symbol list |
 | `Crumbs` | Breadcrumb: `{custid}_{slug}_{process}` — prefix of output filename |
 
+### config\_{descriptor}.ini — Binary Process
+
+Triggers: OnDemand Lambda (S3 PUT trigger). No contractual values beyond the three shared lines.
+
+```ini
+[Default]
+FileOutput   = output.customer.decision-machine.com/{custid}
+Measurements = A,AA,AAMI,AAP,...
+Crumbs       = {custid}_{slug}_binary
+```
+
+### measure\_{descriptor}.ini — Units Process
+
+Triggers: OnDemand Lambda (S3 PUT trigger). No contractual values beyond the three shared lines.
+
+```ini
+[Default]
+FileOutput   = output.customer.decision-machine.com/{custid}
+Measurements = A,AA,AAMI,AAP,...
+Crumbs       = {custid}_{slug}_units
+```
+
+### pdfs\_{descriptor}.ini — Decision Machine (Probability Distribution) Process
+
+Triggers: OnDemand Lambda (S3 PUT trigger). Adds `ConfidenceLevel` as a contractual value — required, no default, decimal format. Used to compute VaR: `P(L > VaR) < 1 - c`.
+
+```ini
+[Default]
+FileOutput        = output.customer.decision-machine.com/{custid}
+Measurements      = A,AA,AAMI,AAP,...
+Crumbs            = {custid}_{slug}_pdfs
+ConfidenceLevel   = 0.95
+```
+
+### var\_{descriptor}.ini — VaR Workflow Process
+
+Triggers: EventBridge → `OnDemand_VaR` State Machine (S3 PUT trigger on `OnDemand/var_` prefix). Adds `ConfidenceLevel` as a contractual value — required, no default, decimal format.
+
+```ini
+[Default]
+FileOutput        = output.customer.decision-machine.com/{custid}
+Measurements      = A,AA,AAMI,AAP,...
+Crumbs            = {custid}_{slug}_var
+ConfidenceLevel   = 0.95
+```
+
+## Companion Metadata Files (.meta)
+
+Output files from the `var_` workflow include a companion `.meta` file alongside the CSV. The `.meta` file carries EWS overlay data consumed by `dm-plot.html`. It is downloaded by the S3 agent and served by `/api/jobfiles/<filename>/meta`.
+
+### Format
+
+Plain text key=value pairs, one per line:
+
+```
+expected_demand_0 = 10.52    ← most recent (dashed vertical line position)
+total_demand_0    = 10.05    ← most recent (fully opaque green dot)
+expected_demand_1 = 10.81
+total_demand_1    = 10.50
+expected_demand_2 = 11.23
+total_demand_2    = 11.35
+expected_demand_3 = 11.45
+total_demand_3    = 12.03
+expected_demand_4 = 11.02
+total_demand_4    = 11.85    ← oldest (most transparent green dot)
+```
+
+- Index 0 is most recent; index 4 is oldest
+- `expected_demand_0` truncated (`Math.floor`) gives the dashed line unit
+- `total_demand_n` truncated gives the dot unit for each trail position
+- Five dots rendered back-to-front; opacities: 0.10, 0.22, 0.40, 0.65, 1.00
+- `.meta` absent → plot renders normally without overlay
+
+---
+
+**Contract immutability:** Once a workflow prefix is deployed, its contract (the set of keys below the three shared lines) is frozen. Adding a new contractual key requires a new prefix (e.g. `var2_`) with its own EventBridge rule and State Machine.
+
 ---
 
 ## Authentication & Access
 
-### CLI Mode (current)
+### Design history — Managed Login considered, declined
 
-SML-App assumes the `SMLAppCLIUser` IAM role at startup, passing `custid` as a session tag. All S3 and DynamoDB access is scoped per-custid via IAM condition keys.
+Amazon Cognito's Managed Login (formerly Hosted UI) was evaluated as an alternative to the SRP flow below — it would remove the custom SRP code and the `NEW_PASSWORD_REQUIRED` challenge-response entirely, since Cognito's own hosted page handles `FORCE_CHANGE_PASSWORD` natively. It was **declined**, for two reasons:
 
-```python
-sts.assume_role(
-    RoleArn         = CLI_ROLE_ARN,
-    RoleSessionName = f'SMLApp-{CUSTID}',
-    ExternalId      = 'decision-machine-cli',
-    Tags            = [{'Key': 'custid', 'Value': CUSTID}],
-)
+1. It's an OAuth redirect flow — the browser goes to a Cognito-hosted domain and the app gets back an authorization code, never a password. That's incompatible with the current keychain-cached-password model; adopting it means replacing the credential mechanism outright, not extending it.
+2. It doesn't actually solve the thing that looked like the gap: Managed Login has no dedicated "change my password while logged in" page — only "Forgot Password" (reset via a code). So the self-service ask isn't better served there than by the reset flow already partially built here.
+
+pycognito/SRP remains the chosen mechanism. This section describes that path.
+
+### Provisioning handoff (SML-Training → SML-App)
+
+SML-Training, not SML-App, owns customer provisioning. By the time a customer downloads and launches SML-App, the following is already true and baked into that build's `sml-app.config`:
+
+- `custid`, `email`, `cognito_username` (= email)
+- `cognito_region`, `user_pool_id`, `client_id`, `identity_pool_id` — resolved for that customer's region already; SML-App does not ask the customer to pick a region or enter these IDs
+- A Cognito user already exists with a **permanent** password the customer chose during the SML-Training flow — provisioned via `AdminCreateUser` (`MessageAction='SUPPRESS'`, no Cognito-sent email) immediately followed by `AdminSetUserPassword(Permanent=True)` using that password. No temporary password is ever generated or emailed.
+
+Consequence: **`NEW_PASSWORD_REQUIRED` does not occur at onboarding.** First launch of SML-App is a plain SRP login with a password the customer already knows. The only remaining case for that challenge is an admin-triggered mass password reset on an *existing* account (e.g. after a security incident) — see below.
+
+`cognito-regions.json`, `GET /api/regions`, and the region-resolution logic in `/api/setup` (documented as "Region Selection" in an earlier draft of this doc) belong to SML-Training's provisioning tooling, not SML-App, under this model — they exist in this repo currently as a holdover from before the handoff was designed, and are slated for removal once SML-Training owns that resolution. `setup.html` itself is likely to shrink to nothing beyond a one-time password prompt (to seed the local keychain) or disappear if that's instead handled by whatever triggers the first AWS action — see Known Limitations.
+
+### Cognito Auth (current — sole auth path)
+
+SML-App authenticates against a shared Cognito User Pool and exchanges the resulting ID token for scoped temporary AWS credentials via a Cognito Identity Pool. There is no CLI/IAM-role mode in the app — every customer install uses Cognito.
+
+Auth is triggered only by the customer actually invoking an AWS-dependent action — Submit Job, opening the TSU modal, or requesting TSUs — never by a background poll or at app startup. `get_boto_session()` is the single chokepoint all three call. The first call triggers authentication; subsequent calls reuse the cached session until the credentials are within 5 minutes of expiring, at which point it transparently re-authenticates on the next action.
+
+```
+1. get_boto_session() called (customer clicks Submit Job / TSU balance / TSU request)
+2. Cached credentials valid?  → yes → reuse
+                              → no  → refresh_token renewal (pycognito)
+                                        succeeds → new ID token
+                                        fails    → full SRP login:
+                                                     password read from OS keychain
+                                                     (keyring, keyed on cognito_username)
+3. ID token exchanged with Identity Pool:
+     cognito-identity:GetId
+     cognito-identity:GetCredentialsForIdentity
+4. Scoped temporary AWS credentials cached with expiry
 ```
 
-If role assumption fails at startup, a persistent red warning banner appears in the dashboard. Local features continue to work; all AWS operations are unavailable.
+**Password storage:** written to the OS keychain (via `keyring`) the first time the customer authenticates — never written to `sml-app.config` or any file on disk. (Historically this was described as being written by a setup-wizard `/api/setup` password field; that field's fate is tied to the provisioning handoff above — see Known Limitations for the current gap.)
 
-### SMLAppCLIUser Role
+**Forced password changes (narrower scope than originally built):** Cognito returns `NEW_PASSWORD_REQUIRED` instead of tokens when a user is in `FORCE_CHANGE_PASSWORD` state. Under the provisioning handoff above, this **cannot happen at onboarding** — it only occurs if an admin later forces a reset on an existing account (e.g. an AWS-side security incident requiring everyone to set a new password). This is why the CLI-mode design never needed anything like it: an IAM role assumed via trust policy has no human credential to expire, rotate, or force-reset in the first place. Password lifecycle management is a cost specific to choosing a human-authenticated identity provider (Cognito) over machine trust (CLI's `sts:AssumeRole`) — narrowed now to the one case that can actually still occur, rather than also covering onboarding.
 
-**Trust policy** — two statements:
-- `sts:AssumeRole` with `ExternalId = decision-machine-cli`
-- `sts:TagSession` requiring `custid` in `TransitiveTagKeys`
+Handling: detected in `_cognito_id_token()` and surfaced via `GET /api/auth/status` (`password_change_required: true`) and via the same flag on `/api/tsu/balance`, `/api/tsu/request`, and `/api/submit-sml` responses — whichever action the customer was attempting when it happened. The dashboard shows an inline "set new password" form in the auth banner, triggered only by that action's response, never by a background check. `POST /api/auth/change-password` completes the Cognito challenge using the still-valid old password from the keychain (the customer only supplies the new one), then overwrites the keychain entry and forces a clean re-authentication.
 
-To onboard a user: add their AWS Account ID to both Principal arrays.
-To offboard: remove it. Access revoked immediately.
+Requires `USER_PASSWORD_AUTH` enabled as an allowed auth flow on the Cognito App Client, alongside the `ALLOW_USER_SRP_AUTH` flow `pycognito` uses for normal logins — the challenge-response step uses `USER_PASSWORD_AUTH` directly via boto3 rather than pycognito's SRP helper, since it needs a `Session` token under direct control rather than one buried inside pycognito's internals.
 
-**Permission policy:**
-- `s3:PutObject` on `customer.decision-machine.com/OnDemand/*`
-- `s3:ListBucket` on output bucket scoped to `${aws:PrincipalTag/custid}/*`
-- `s3:GetObject` on `output.customer.decision-machine.com/${aws:PrincipalTag/custid}/*`
-- `s3:DeleteObject` on `output.customer.decision-machine.com/${aws:PrincipalTag/custid}/*`
-- `dynamodb:GetItem` on `tsu_balances` scoped to `${aws:PrincipalTag/custid}`
+Cognito username is always the account email — there is no separate "Cognito username" field anywhere in SML-App; `cognito_username` in `sml-app.config` is just email, copied.
 
-### Cognito Mode (planned)
+**Known gap — MFA:** an MFA challenge instead of `NEW_PASSWORD_REQUIRED` is not handled and will still surface as a generic auth failure with no path to resolution from the dashboard. See Known Limitations.
 
-pycognito exchanges email/password for scoped temporary credentials. Password in system keychain — never on disk.
+### Per-custid Scoping (ABAC)
+
+Mirrors the isolation guarantee the old CLI-mode session-tag design provided, using Cognito's equivalent mechanism instead of `sts:TagSession`:
+
+1. **Custom attribute** `custid` on the User Pool, set once per customer at account creation (now: by SML-Training's provisioning step). Custom attributes ride in the ID token automatically — no pre-token-generation Lambda required.
+2. **Attributes for access control**, enabled on the Identity Pool, mapping the `custid` claim to a principal tag on the assumed role's session — this is enforced by Cognito itself; a customer's own client cannot influence which tag value gets attached.
+3. **One shared IAM role**, `SMLAppCognitoUser`, attached to the Identity Pool's authenticated role. Trust policy allows `sts:AssumeRoleWithWebIdentity` + `sts:TagSession` conditioned on the identity pool ID. Permission policy is the same shape as the retired `SMLAppCLIUser` policy, just keyed off `${aws:PrincipalTag/custid}` instead of the session tag.
+
+**Status:** this ABAC configuration has not yet been applied in the Cognito/IAM console — see Known Limitations. Until it is, a Cognito identity's federated credentials are not actually restricted to its own `custid`'s data.
+
+The `SMLAppCognitoUser` permission policy (see IAM Access Summary below) is a straight port of the retired `SMLAppCLIUser` policy — same resource scoping, condition key swapped from session tag to principal tag.
+
+Onboarding a new customer: SML-Training creates their Cognito user with `custid` set. Offboarding: disable the Cognito user — access revoked immediately, no IAM trust-policy edit needed (unlike the old per-AWS-account CLI onboarding flow).
 
 ---
 
@@ -281,7 +406,9 @@ pycognito exchanges email/password for scoped temporary credentials. Password in
 - TSU balance badge in header — reads from DynamoDB via `GET /api/tsu/balance`; click opens request modal
 - TSU gating on job submission — blocks if never funded, zero balance, or overdrawn >100
 - TSU request flow — inline in SML modal and via header badge modal
-- AWS role assumption at startup — warning banner if AssumeRole fails
+- Cognito authentication — SRP login, refresh_token renewal, password in OS keychain
+- Persistent auth-status banner — polled every 60s via `GET /api/auth/status`, not just at startup
+- Forced Cognito password change handling — inline dashboard form, no restart needed
 - Customer ID loaded from `sml-app.config` — read-only badge in header
 - S3 Download Agent and File Watcher as background daemon threads
 - File management: delete, archive, restore, delete-archived for SML/DM output files
@@ -289,7 +416,8 @@ pycognito exchanges email/password for scoped temporary credentials. Password in
 - Dark/light theme, category filter, search
 
 **Pending:**
-- Cognito authentication flow (Mode 2)
+- Cognito Identity Pool ABAC scoping (per-custid isolation) — not yet applied in the AWS console
+- MFA challenge handling — surfaces as a generic auth failure today
 
 ---
 
@@ -430,15 +558,17 @@ Background daemon thread in `server.py`.
 
 ## IAM Access Summary
 
-### SMLAppCLIUser Role (assumed by SML-App)
+### SMLAppCognitoUser Role (assumed via Cognito Identity Pool, shared across all customers)
 
 | Resource | Action | Scope |
 |----------|--------|-------|
 | `customer.decision-machine.com/OnDemand/*` | `s3:PutObject` | All |
-| `output.customer.decision-machine.com` | `s3:ListBucket` | `{custid}/*` via session tag |
-| `output.customer.decision-machine.com/{custid}/*` | `s3:GetObject` | Per session tag |
-| `output.customer.decision-machine.com/{custid}/*` | `s3:DeleteObject` | Per session tag |
-| `tsu_balances` | `dynamodb:GetItem` | Per session tag custid |
+| `output.customer.decision-machine.com` | `s3:ListBucket` | `{custid}/*` via principal tag |
+| `output.customer.decision-machine.com/{custid}/*` | `s3:GetObject` | Per principal tag |
+| `output.customer.decision-machine.com/{custid}/*` | `s3:DeleteObject` | Per principal tag |
+| `tsu_balances` | `dynamodb:GetItem` | Per principal tag custid |
+
+*Principal tag (`custid`) is attached automatically by the Identity Pool via Attributes for Access Control, sourced from the `custid` custom attribute on the authenticating Cognito user — see Authentication & Access. Not yet configured; see Known Limitations.*
 
 ### Lambda Roles
 
@@ -454,6 +584,8 @@ Background daemon thread in `server.py`.
 | TSU-Paid | Secrets Manager `ondemand/stripe-api-key`, `ondemand/stripe-webhook-secret` | `GetSecretValue` |
 | TSU-Debit | `tsu_balances` | `UpdateItem` |
 | TSU-Debit | `tsu_transactions` | `PutItem` |
+| OnDemand_VaR | `customer.decision-machine.com/OnDemand/*` | `GetObject`, `PutObject`, `DeleteObject` |
+| OnDemand_VaR | `output.customer.decision-machine.com/*` | `PutObject` |
 
 ---
 
@@ -465,24 +597,23 @@ Background daemon thread in `server.py`.
 | TSU-Paid | `stripe` Python package + `tsu_tables.py` |
 | TSU-Debit | `tsu_tables.py` only |
 | OnDemand | **unchanged** |
+| OnDemand_VaR | Klayers scipy (Python 3.12) — includes numpy |
 
 ---
 
 ## Configuration File
 
-`sml-app.config` — personalised per customer, baked into each PyInstaller build:
+`sml-app.config` — personalised per customer, written by the setup wizard on first launch. Password is never stored here — see [Authentication & Access](#authentication--access). `user_pool_id`, `client_id`, and `identity_pool_id` are resolved server-side from `cognito-regions.json` based on the region the customer selects — the customer never sees or enters these directly.
 
 ```ini
 [identity]
 custid            = tGwuZQqEcx
-auth_mode         = cli                              ; cli | cognito
 email             = customer@example.com
-cli_role_arn      = arn:aws:iam::741600857758:role/SMLAppCLIUser
-cognito_username  = customer@example.com             ; Cognito mode only
-cognito_region    = us-east-1                        ; Cognito mode only
-user_pool_id      = us-east-1_XXXXXXXXX              ; Cognito mode only
-client_id         = XXXXXXXXXXXXXXXXXXXXXXXXXX       ; Cognito mode only
-identity_pool_id  = us-east-1:XXXXXXXX-XXXX-...     ; Cognito mode only
+cognito_username  = customer@example.com
+cognito_region    = us-east-1
+user_pool_id      = us-east-1_XXXXXXXXX
+client_id         = XXXXXXXXXXXXXXXXXXXXXXXXXX
+identity_pool_id  = us-east-1:XXXXXXXX-XXXX-...
 
 [storage]
 input_bucket   = customer.decision-machine.com
@@ -506,7 +637,7 @@ build-all.bat users.csv             ← batch build from custid,email CSV
 
 Each build writes a personalised `sml-app.config`, runs PyInstaller, produces `dist\SML-App-{custid}.zip`. HTML files overwritten on every launch; `sml-app.config` preserved after first launch.
 
-Registration page (`register.html`) — two-tab form (CLI / Cognito). Async submit triggers GitHub Actions build workflow, uploads ZIP to `downloads.decision-machine.com/{custid}/`, sends pre-signed download link via SES.
+**Superseded by the SML-Training handoff** (see Authentication & Access → Provisioning handoff): `build.bat`/`build-all.bat` need to write the full Cognito field set (`cognito_username`, `cognito_region`, `user_pool_id`, `client_id`, `identity_pool_id`), not just `custid`/`email`, since SML-Training resolves those before triggering a build rather than SML-App resolving them at runtime. The earlier plan described here — a standalone `register.html` collecting custid/email and triggering a GitHub Actions build — is superseded by SML-Training owning that collection and provisioning step instead; this doc doesn't track SML-Training's implementation, only the contract it must hand off (see Provisioning handoff).
 
 ---
 
@@ -522,7 +653,8 @@ Registration page (`register.html`) — two-tab form (CLI / Cognito). Async subm
 | TSU transaction log | `tsu_transactions` DynamoDB | Operational retention |
 | Customer email | `sml-app.config` + TSU request file (briefly) | Request file deleted after processing |
 | Stripe API key | Secrets Manager | Lambda execution only |
-| AWS role credentials | Memory only (assumed on startup) | Session lifetime |
+| Cognito password | OS keychain (`keyring`) | Until customer/setup change |
+| Federated AWS credentials | Memory only (obtained lazily, refreshed before expiry) | Until process exit or refresh |
 
 ---
 
@@ -536,16 +668,21 @@ Registration page (`register.html`) — two-tab form (CLI / Cognito). Async subm
 | `pdfs-table.html` | `CLAUDE-dm.md` |
 | `launcher.py`, `build.bat`, `build-all.bat`, `sml-app.spec` | `CLAUDE-core.md` |
 | `lambda_tsu_request.py`, `lambda_tsu_paid.py`, `lambda_tsu_debit.py`, `tsu_tables.py` | `CLAUDE-core.md` |
-| `iam-cli-user-role.json` | `CLAUDE-core.md` |
-| `register.html` | `CLAUDE-core.md` |
-| Cognito auth flow (planned) | `CLAUDE-core.md` |
+| `iam-cognito-user-role.json` | `CLAUDE-core.md` | not yet created — role/ABAC config to be applied in AWS console; see Known Limitations |
+| `register.html` | `CLAUDE-core.md` | superseded — provisioning now belongs to SML-Training, not this repo; see Authentication & Access |
+| Cognito auth flow | `CLAUDE-core.md` |
 
 ---
 
 ## Known Limitations and Future Work
 
-- Cognito authentication (Mode 2) not yet implemented
-- Registration page backend (GitHub Actions trigger, SES email) not yet built
+See `BACKLOG.md` at the repo root for the full prioritised list. Summary:
+
+- Cognito Identity Pool ABAC scoping not yet applied — per-custid isolation for Cognito credentials is designed (see Authentication & Access) but not yet configured in AWS
+- `NEW_PASSWORD_REQUIRED` handling exists but is now narrower in scope than originally built — only the admin-forced-reset case applies once SML-Training owns onboarding (see Provisioning handoff); MFA challenge responses from Cognito still surface as a generic auth failure, with no in-app path to resolve them
+- **First-launch password entry is unresolved.** SML-Training provisions the Cognito user and its password, but SML-App's OS keychain is per-machine and can't be pre-populated by a download — some interactive moment for the customer to type their (already-chosen) password once, seeding the keychain, is still needed. Whether that's a shrunk `setup.html`, an inline prompt folded into `index.html` the first time `get_boto_session()` finds no keychain entry, or something else, is undecided.
+- `cognito-regions.json`, `GET /api/regions`, and the region-resolution branch of `/api/setup` are a holdover in this repo from before the SML-Training provisioning handoff was designed — they belong in SML-Training's provisioning tooling, not here, and should be removed from SML-App once that handoff is implemented there
+- Registration/provisioning (SML-Training: `AdminCreateUser` + `AdminSetUserPassword`, custid/region/pool-ID baking into the build) lives in a separate codebase from SML-App and is not covered by this document
 - No job status tracking (pending/in-progress) — files appear after Lambda completes
 - No retry logic on failed S3 uploads
 - Deployment service registration (Windows Task Scheduler) not yet automated

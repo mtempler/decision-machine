@@ -8,10 +8,31 @@ Directory layout:
   input/            ← uploaded time-series CSVs
   jobs/             ← SML measurement CSVs (dropped here by pipeline)
 """
-import sys, json, os, uuid, csv, re, configparser, io, threading, time, shutil, logging
-from datetime import datetime, timezone
+import sys, json, os, uuid, csv, re, configparser, io, threading, time, shutil, logging, gzip
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from flask import Flask, abort, jsonify, request, send_file, send_from_directory
+
+#
+# Cognito auth — required. Password is never written to disk; it lives in
+# the OS keychain, looked up by (KEYRING_SERVICE, COGNITO_USERNAME) at auth time.
+try:
+    import keyring          # OS keychain (Windows Credential Manager / macOS Keychain)
+except Exception:
+    keyring = None
+try:
+    from pycognito import Cognito
+except Exception:
+    Cognito = None
+try:
+    # Raised by Cognito.authenticate() when the user is in FORCE_CHANGE_PASSWORD
+    # state (default for admin-created users, and what an admin-triggered mass
+    # password reset — e.g. after a security incident — puts existing users into).
+    # NOTE: verify this exists in the pinned pycognito version; the except-Exception
+    # fallback below still catches the failure, just without the specific handling.
+    from pycognito.exceptions import ForceChangePasswordException
+except Exception:
+    ForceChangePasswordException = None
 
 # ── Config ────────────────────────────────────────────────
 _cfg = configparser.ConfigParser()
@@ -22,51 +43,156 @@ _cfg.read(_cfg_path)
 def cfg(section, key, fallback=''):
     return _cfg.get(section, key, fallback=fallback)
 
-AUTH_MODE      = cfg('identity', 'auth_mode',     fallback='cli')
 CUSTID         = cfg('identity', 'custid',         fallback='')
 EMAIL          = cfg('identity', 'email',           fallback='')
-CLI_ROLE_ARN   = cfg('identity', 'cli_role_arn',   fallback='')
+
+# Cognito identity — populated by the setup wizard.
+COGNITO_USERNAME  = cfg('identity', 'cognito_username',  fallback='')
+COGNITO_REGION    = cfg('identity', 'cognito_region',    fallback='us-east-1')
+USER_POOL_ID      = cfg('identity', 'user_pool_id',      fallback='')
+CLIENT_ID         = cfg('identity', 'client_id',         fallback='')
+IDENTITY_POOL_ID  = cfg('identity', 'identity_pool_id',  fallback='')
+KEYRING_SERVICE   = 'SML-App'
 INPUT_BUCKET   = cfg('storage',  'input_bucket',   fallback='customer.decision-machine.com')
 OUTPUT_BUCKET  = cfg('storage',  'output_bucket',  fallback='output.customer.decision-machine.com')
 WATCH_PATH     = cfg('storage',  'watch_path',     fallback='')
 WATCH_INTERVAL = int(cfg('storage', 'watch_interval', fallback='30'))
 AGENT_INTERVAL = int(cfg('storage', 'agent_interval', fallback='60'))
 
-# ── boto3 session with assumed role (CLI mode) ────────
-# Assumes SMLAppCLIUser role with custid as session tag for per-custid S3/DynamoDB scoping.
-# Falls back to ambient credentials if cli_role_arn not configured (dev/test).
-_boto_session = None
+# ── boto3 session — Cognito federated credentials ─────
+# Lazy: no AWS/Cognito call happens at startup. The session is only
+# established the first time something actually needs AWS access (TSU
+# balance check, job submit, TSU request, or the background S3 agent's
+# next poll) — and re-established automatically once the cached
+# credentials are within 5 minutes of expiring.
+_boto_session  = None
+_creds_expiry  = None   # datetime (UTC) the current _boto_session's creds expire
+_cognito_obj   = None   # cached pycognito Cognito instance — holds the refresh_token so we
+                        # don't have to touch the keychain/password on every renewal
+_password_change_required = False  # set when Cognito returns NEW_PASSWORD_REQUIRED —
+                                    # e.g. an admin-forced reset (default password, or a
+                                    # mass reset after a security incident). Cleared once
+                                    # the customer sets a new password via the dashboard.
+
+_EXPIRY_BUFFER = timedelta(minutes=5)
+
+
+class PasswordChangeRequiredError(RuntimeError):
+    """Raised when Cognito reports FORCE_CHANGE_PASSWORD for this user. Resolved via
+    POST /api/auth/change-password, not by retrying authentication with the old password."""
+    pass
+
+
+def _cognito_get_password():
+    if keyring is None:
+        raise RuntimeError('keyring package not installed')
+    if not COGNITO_USERNAME:
+        raise RuntimeError('cognito_username not set in sml-app.config — run the setup wizard')
+    pw = keyring.get_password(KEYRING_SERVICE, COGNITO_USERNAME)
+    if not pw:
+        raise RuntimeError(
+            f'No password found in OS keychain for {COGNITO_USERNAME}. '
+            f'Run the setup wizard to store it.'
+        )
+    return pw
+
+
+def _cognito_id_token(force_password=False):
+    """Return a fresh Cognito ID token, refreshing via refresh_token when possible
+    and only falling back to a full SRP (password) login when necessary."""
+    global _cognito_obj, _password_change_required
+    if Cognito is None:
+        raise RuntimeError('pycognito package not installed')
+    if not (USER_POOL_ID and CLIENT_ID and COGNITO_USERNAME):
+        raise RuntimeError('user_pool_id, client_id, and cognito_username must be set in sml-app.config — run the setup wizard')
+
+    if _cognito_obj is not None and not force_password:
+        try:
+            _cognito_obj.renew_access_token()
+            logging.info('Cognito: renewed tokens via refresh_token')
+            return _cognito_obj.id_token
+        except Exception as e:
+            logging.warning(f'Cognito: refresh_token renewal failed, falling back to password auth: {e}')
+
+    password = _cognito_get_password()
+    _cognito_obj = Cognito(
+        USER_POOL_ID, CLIENT_ID,
+        user_pool_region=COGNITO_REGION,
+        username=COGNITO_USERNAME,
+    )
+    try:
+        _cognito_obj.authenticate(password=password)
+    except Exception as e:
+        is_password_change = (
+            (ForceChangePasswordException is not None and isinstance(e, ForceChangePasswordException))
+            or 'NEW_PASSWORD_REQUIRED' in str(e)
+        )
+        if is_password_change:
+            _password_change_required = True
+            logging.warning(f'Cognito: {COGNITO_USERNAME} must set a new password before authenticating '
+                             f'(FORCE_CHANGE_PASSWORD — admin reset or first login with a default password)')
+            raise PasswordChangeRequiredError(
+                'Cognito requires a new password for this account. Set one from the dashboard.'
+            ) from e
+        raise
+    _password_change_required = False
+    logging.info(f'Cognito: authenticated {COGNITO_USERNAME} via SRP')
+    return _cognito_obj.id_token
+
+
+def _cognito_federated_credentials(id_token):
+    """Exchange a Cognito User Pool ID token for scoped temporary AWS credentials
+    via the Identity Pool. custid-scoping is enforced on the IAM role attached
+    to the identity pool's authenticated role via principal tags (ABAC)."""
+    import boto3
+    if not IDENTITY_POOL_ID:
+        raise RuntimeError('identity_pool_id not set in sml-app.config — run the setup wizard')
+    logins_key = f'cognito-idp.{COGNITO_REGION}.amazonaws.com/{USER_POOL_ID}'
+    ci = boto3.client('cognito-identity', region_name=COGNITO_REGION)
+    identity_id = ci.get_id(
+        IdentityPoolId=IDENTITY_POOL_ID,
+        Logins={logins_key: id_token},
+    )['IdentityId']
+    creds = ci.get_credentials_for_identity(
+        IdentityId=identity_id,
+        Logins={logins_key: id_token},
+    )['Credentials']
+    return creds  # {'AccessKeyId', 'SecretKey', 'SessionToken', 'Expiration'}
+
 
 def get_boto_session():
-    global _boto_session
-    if _boto_session is not None:
+    global _boto_session, _creds_expiry
+    now_dt = datetime.now(timezone.utc)
+    if _boto_session is not None and now_dt < _creds_expiry - _EXPIRY_BUFFER:
         return _boto_session
-    if CLI_ROLE_ARN and CUSTID:
-        try:
-            import boto3
-            sts    = boto3.client('sts')
-            creds  = sts.assume_role(
-                RoleArn         = CLI_ROLE_ARN,
-                RoleSessionName = f'SMLApp-{CUSTID}',
-                ExternalId      = 'decision-machine-cli',
-                Tags            = [{'Key': 'custid', 'Value': CUSTID}],
-            )['Credentials']
-            _boto_session = boto3.Session(
-                aws_access_key_id     = creds['AccessKeyId'],
-                aws_secret_access_key = creds['SecretAccessKey'],
-                aws_session_token     = creds['SessionToken'],
-            )
-            logging.info(f'boto3: assumed role {CLI_ROLE_ARN} with custid={CUSTID}')
-        except Exception as e:
-            logging.warning(f'boto3: role assumption failed, using ambient credentials: {e}')
-            import boto3
-            _boto_session = boto3.Session()
-    else:
-        import boto3
-        _boto_session = boto3.Session()
+
+    try:
+        id_token = _cognito_id_token()
+        creds    = _cognito_federated_credentials(id_token)
+        _boto_session = __import__('boto3').Session(
+            aws_access_key_id     = creds['AccessKeyId'],
+            aws_secret_access_key = creds['SecretKey'],
+            aws_session_token     = creds['SessionToken'],
+        )
+        _creds_expiry = creds['Expiration']
+        logging.info(f'boto3: obtained Cognito-federated credentials for {COGNITO_USERNAME}, '
+                     f'expiring {_creds_expiry.isoformat()}')
+    except Exception as e:
+        logging.error(f'Cognito authentication failed: {e}')
+        # Force a clean password re-auth on the next attempt rather than
+        # repeatedly trying a possibly-stale refresh_token.
+        _cognito_obj_reset()
+        raise
+
     return _boto_session
 
+
+def _cognito_obj_reset():
+    global _cognito_obj
+    _cognito_obj = None
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+
 
 import sys
 
@@ -79,6 +205,10 @@ JOBS    = BASE / 'jobs'
 ARCHIVE = BASE / 'archive'
 ERRORS  = BASE / 'errors'
 for d in (DATA, INPUT, JOBS, ARCHIVE, ERRORS): d.mkdir(exist_ok=True)
+
+# Resolve WATCH_PATH against BASE so relative paths always land next to the exe
+if WATCH_PATH:
+    WATCH_PATH = str(BASE / WATCH_PATH)
 
 VIEWS_FILE   = DATA / 'views.json'
 
@@ -98,37 +228,94 @@ app = Flask(__name__)
 # ── Static ────────────────────────────────────────────
 @app.route('/')
 def root():
-    if not CUSTID or not EMAIL:
-        return send_from_directory(BASE, 'setup.html')
+    # Local features (Views, measurements, file management) don't need custid/email/Cognito
+    # at all, so the dashboard is always the landing page. AWS-touching actions surface
+    # their own auth problems when actually attempted — see /api/submit-sml, /api/tsu/*.
     return send_from_directory(BASE, 'index.html')
 
 @app.route('/<page>.html')
 def pages(page):
-    allowed = {'index', 'measurements', 'job-plot', 'pdfs-table', 'setup'}
-    if page in allowed: return send_from_directory(BASE, f'{page}.html')
-    abort(404)
+    allowed = {'index', 'measurements', 'job-plot', 'dm-plot', 'pdfs-table', 'setup'}
+    if page not in allowed:
+        abort(404)
+    return send_from_directory(BASE, f'{page}.html')
+
+# ── Cognito region map ────────────────────────────────
+# cognito-regions.json ships with the bundle (refreshed every launch, like the
+# HTML — see launcher.py) and maps a region code to that region's pool/client/
+# identity-pool IDs. The browser only ever sees region codes + display labels;
+# /api/setup resolves the actual AWS resource IDs itself, server-side, so a
+# customer's form submission can't be tampered with to point at a different
+# region's (or another customer's) Cognito resources.
+REGIONS_FILE = BASE / 'cognito-regions.json'
+
+def _load_region_map():
+    return read_json(REGIONS_FILE, {})
+
+@app.route('/api/regions')
+def get_regions():
+    """Region codes + labels only — never the underlying pool/client/identity IDs."""
+    regions = _load_region_map()
+    return jsonify([
+        {'code': code, 'label': info.get('label', code)}
+        for code, info in regions.items()
+    ])
 
 # ── Setup wizard ──────────────────────────────────────
 @app.route('/api/setup', methods=['POST'])
 def save_setup():
-    """Write sml-app.config from first-launch wizard input."""
-    b      = request.get_json(force=True)
-    custid = b.get('custid', '').strip()
-    email  = b.get('email', '').strip()
-    if not custid: abort(400, 'custid is required')
-    if not email:  abort(400, 'email is required')
+    """Write sml-app.config from first-launch wizard input.
+    Password is written to the OS keychain via `keyring` and never touches disk.
+    Cognito username is always the account email — no separate field. Pool/client/
+    identity-pool IDs are resolved server-side from cognito-regions.json based on
+    the region the customer picked from the dropdown; only regions present in that
+    file are selectable, so an unsupported region can't be submitted."""
+    b               = request.get_json(force=True)
+    custid          = b.get('custid', '').strip()
+    email           = b.get('email', '').strip()
+    region_code     = b.get('region', '').strip()
+    password        = b.get('password', '')
+    cognito_username = email
+
+    if not custid:      abort(400, 'custid is required')
+    if not email:        abort(400, 'email is required')
+    if not region_code: abort(400, 'region is required')
+    if not password:    abort(400, 'password is required')
+    if keyring is None:
+        abort(500, 'keyring package not installed on this build — cannot store password securely')
+
+    region_map  = _load_region_map()
+    region_info = region_map.get(region_code)
+    if not region_info:
+        abort(400, f'Unknown region "{region_code}" — cognito-regions.json may be out of date')
+
+    user_pool_id     = region_info.get('user_pool_id', '')
+    client_id        = region_info.get('client_id', '')
+    identity_pool_id = region_info.get('identity_pool_id', '')
+    if not (user_pool_id and client_id and identity_pool_id):
+        abort(500, f'cognito-regions.json entry for "{region_code}" is incomplete')
+
+    try:
+        keyring.set_password(KEYRING_SERVICE, cognito_username, password)
+    except Exception as e:
+        abort(500, f'Failed to store password in OS keychain: {e}')
+    logging.info(f'Setup wizard: stored Cognito password in OS keychain for {cognito_username}')
 
     config_content = (
-        f'[identity]\n'
-        f'custid    = {custid}\n'
-        f'auth_mode = cli\n'
-        f'email     = {email}\n\n'
-        f'[storage]\n'
-        f'input_bucket   = customer.decision-machine.com\n'
-        f'output_bucket  = output.customer.decision-machine.com\n'
-        f'watch_path     = downloads\n'
-        f'watch_interval = 30\n'
-        f'agent_interval = 60\n'
+        '[identity]\n'
+        f'custid           = {custid}\n'
+        f'email            = {email}\n'
+        f'cognito_username = {cognito_username}\n'
+        f'cognito_region   = {region_code}\n'
+        f'user_pool_id     = {user_pool_id}\n'
+        f'client_id        = {client_id}\n'
+        f'identity_pool_id = {identity_pool_id}\n\n'
+        '[storage]\n'
+        'input_bucket   = customer.decision-machine.com\n'
+        'output_bucket  = output.customer.decision-machine.com\n'
+        'watch_path     = downloads\n'
+        'watch_interval = 30\n'
+        'agent_interval = 60\n'
     )
     try:
         _cfg_path.write_text(config_content, encoding='utf-8')
@@ -141,13 +328,113 @@ def save_setup():
 # ── Config endpoint ───────────────────────────────────
 @app.route('/api/config')
 def get_config():
-    return jsonify({'custid': CUSTID, 'auth_mode': AUTH_MODE, 'email': EMAIL})
+    return jsonify({'custid': CUSTID, 'email': EMAIL})
+
+# ── Auth status ───────────────────────────────────────
+# Exercises get_boto_session() (cheap once cached — only does real work when
+# credentials are missing/expired) so the dashboard can show a persistent
+# warning banner if Cognito auth is failing, rather than only surfacing as
+# a confusing null TSU balance or a failed job submit.
+@app.route('/api/auth/status')
+def get_auth_status():
+    try:
+        get_boto_session()
+        return jsonify({'ok': True, 'password_change_required': False})
+    except PasswordChangeRequiredError as e:
+        # Don't retry auth here — surface distinctly so the dashboard can show
+        # a "set new password" form instead of a generic failure banner.
+        return jsonify({'ok': False, 'password_change_required': True, 'error': str(e)})
+    except Exception as e:
+        logging.error(f'Auth status check failed: {e}')
+        return jsonify({'ok': False, 'password_change_required': False, 'error': str(e)})
+
+
+@app.route('/api/auth/change-password', methods=['POST'])
+def change_password():
+    """Complete a Cognito FORCE_CHANGE_PASSWORD challenge (admin-set default
+    password, or an admin-triggered mass reset — e.g. after a security incident)
+    using the customer's own chosen new password. Uses the still-valid old
+    password from the keychain — the customer doesn't need to know or re-enter it."""
+    global _password_change_required, _boto_session, _creds_expiry
+
+    b = request.get_json(force=True)
+    new_password = b.get('new_password', '')
+    if not new_password:
+        abort(400, 'new_password is required')
+    if not (USER_POOL_ID and CLIENT_ID and COGNITO_USERNAME):
+        abort(400, 'Cognito is not configured — run the setup wizard')
+
+    old_password = _cognito_get_password()
+
+    import boto3
+    idp = boto3.client('cognito-idp', region_name=COGNITO_REGION)
+    try:
+        resp = idp.initiate_auth(
+            ClientId=CLIENT_ID,
+            AuthFlow='USER_PASSWORD_AUTH',
+            AuthParameters={'USERNAME': COGNITO_USERNAME, 'PASSWORD': old_password},
+        )
+    except Exception as e:
+        abort(502, f'Could not reach Cognito to start the password change: {e}')
+
+    if resp.get('ChallengeName') != 'NEW_PASSWORD_REQUIRED':
+        # Nothing pending — the account may have already been changed by another means.
+        _password_change_required = False
+        abort(409, 'No password change is currently required for this account.')
+
+    try:
+        idp.respond_to_auth_challenge(
+            ClientId=CLIENT_ID,
+            ChallengeName='NEW_PASSWORD_REQUIRED',
+            Session=resp['Session'],
+            ChallengeResponses={'USERNAME': COGNITO_USERNAME, 'NEW_PASSWORD': new_password},
+        )
+    except idp.exceptions.InvalidPasswordException as e:
+        abort(400, f"Password doesn't meet the account's password policy: {e}")
+    except Exception as e:
+        abort(500, f'Failed to set new password: {e}')
+
+    # New password is now permanent in Cognito — persist it locally and force
+    # a clean re-authentication on the next AWS call.
+    try:
+        keyring.set_password(KEYRING_SERVICE, COGNITO_USERNAME, new_password)
+    except Exception as e:
+        # Cognito-side change already succeeded; a keychain write failure here
+        # would otherwise leave the app authenticating with a password that no
+        # longer works, with no way to recover except re-running setup.
+        abort(500, f'Password was changed in Cognito but could not be saved locally: {e}. '
+                    f'Re-run the setup wizard with the new password.')
+
+    _password_change_required = False
+    _cognito_obj_reset()
+    _boto_session = None
+    _creds_expiry = None
+    logging.info(f'Password changed for {COGNITO_USERNAME}')
+    return jsonify({'status': 'ok'})
+
+# ── Trail progress ────────────────────────────────────
+TRAIL_PROGRESS_FILE = DATA / 'trail_progress.json'
+
+@app.route('/api/trail', methods=['GET'])
+def get_trail():
+    """Return current trail progress."""
+    return jsonify(read_json(TRAIL_PROGRESS_FILE, {}))
+
+@app.route('/api/trail', methods=['POST'])
+def save_trail():
+    """Save trail progress."""
+    b = request.get_json(force=True)
+    write_json(TRAIL_PROGRESS_FILE, b)
+    logging.info(f'Trail progress saved: {b}')
+    return jsonify({'status': 'ok'})
 
 # ── TSU ───────────────────────────────────────────────
 TSU_BALANCES_TABLE = 'tsu_balances'
 
 def get_tsu_balance_from_dynamo():
-    """Read current TSU balance from DynamoDB. Returns int or None."""
+    """Read current TSU balance from DynamoDB. Returns int or None.
+    Lets PasswordChangeRequiredError propagate — the route surfaces that distinctly
+    rather than folding it into a plain null balance."""
     if not CUSTID:
         return None
     try:
@@ -157,14 +444,21 @@ def get_tsu_balance_from_dynamo():
         if item and 'balance' in item:
             return int(item['balance'])
         return None
+    except PasswordChangeRequiredError:
+        raise
     except Exception as e:
-        logging.warning(f'TSU balance lookup failed: {e}')
+        logging.error(f'TSU balance lookup failed: {e}', exc_info=True)
         return None
 
 @app.route('/api/tsu/balance')
 def get_tsu_balance():
-    balance = get_tsu_balance_from_dynamo()
-    return jsonify({'balance': balance, 'email': EMAIL})
+    try:
+        balance = get_tsu_balance_from_dynamo()
+        return jsonify({'balance': balance, 'email': EMAIL, 'password_change_required': False})
+    except PasswordChangeRequiredError as e:
+        # Still 200 — this is a passive display endpoint, not an action. The dashboard
+        # shows the password-change prompt only if the customer then tries to act on it.
+        return jsonify({'balance': None, 'email': EMAIL, 'password_change_required': True, 'error': str(e)})
 
 @app.route('/api/tsu/request', methods=['POST'])
 def request_tsu():
@@ -192,6 +486,8 @@ def request_tsu():
             Body=content.encode('utf-8'),
             ACL='bucket-owner-full-control'
         )
+    except PasswordChangeRequiredError as e:
+        return jsonify({'error': str(e), 'password_change_required': True}), 401
     except Exception as e:
         abort(500, f'S3 upload failed: {str(e)}')
     return jsonify({'filename': filename, 'quantity': quantity, 'email': EMAIL}), 200
@@ -265,7 +561,10 @@ def upload_series(vid):
          'headers':meta['headers'], 'dateRange':meta['dateRange'],
          'length':meta['length']}
     v['series'].append(s); write_json(VIEWS_FILE, views)
-    return jsonify(s), 201
+    resp = jsonify(s)
+    if meta.get('warning'):
+        resp.headers['X-Warning'] = meta['warning']
+    return resp, 201
 
 @app.route('/api/views/<vid>/series/<sid>', methods=['DELETE'])
 def delete_series(vid, sid):
@@ -310,8 +609,8 @@ def parse_jobfile(filename):
         'slug':       slug,
         'process':    process,
         'descriptor': descriptor,
-        'is_pdfs':    process == 'pdfs',
-        'is_sml':     process not in ('pdfs', '', 'unknown'),
+        'is_pdfs':    process in ('pdfs', 'interaction', 'corr', 'forecast'),
+        'is_sml':     process not in ('pdfs', 'interaction', 'corr', 'forecast', '', 'unknown'),
         'parsed':     parsed,
     }
 
@@ -347,7 +646,7 @@ def list_jobfiles():
 # Headers injected at serve time — Lambda output files have no header row
 JOBFILE_HEADERS = {
     'binary': 'Symbol,TS,value,p+,p-,energy,power,resistance,noise,T,FE,therm_p+,therm_p-',
-    'units':  'Symbol,TS,value,p,E,T,T_B,exp_n,exp_strain,exp_demand,sus_n,sus_strain,sus_E,sus_demand,var_n,var_strain,var_E,var_del_n,cov_n_strain',
+    'units':  'Symbol,TS,value,momentum,energy,free energy,free entropy,temperature,expected demand,expected E,delta demand',
 }
 
 @app.route('/api/jobfiles/<filename>/csv')
@@ -362,6 +661,20 @@ def get_jobfile_csv(filename):
         data = (header + '\n').encode('utf-8') + raw
         return data, 200, {'Content-Type': 'text/csv'}
     return send_file(str(p), mimetype='text/csv')
+
+@app.route('/api/jobfiles/<filename>/meta')
+def serve_jobfile_meta(filename):
+    """Serve companion .meta file for a job CSV — key=value plot overlay data."""
+    if any(c in filename for c in ('/', '\\', '..')):
+        abort(400, 'invalid filename')
+    meta_name = re.sub(r'\.csv$', '.meta', filename, flags=re.IGNORECASE)
+    if not meta_name.endswith('.meta'):
+        meta_name = filename + '.meta'
+    p = JOBS / meta_name
+    if not p.exists():
+        abort(404, f'Meta file not found: {meta_name}')
+    return send_from_directory(str(JOBS), meta_name, mimetype='text/plain')
+
 
 @app.route('/api/jobfiles/<filename>/delete', methods=['POST'])
 def delete_jobfile(filename):
@@ -437,6 +750,9 @@ def delete_archivedfile(filename):
 @app.route('/api/archivedfiles/<filename>/restore', methods=['POST'])
 def restore_jobfile(filename):
     if '/' in filename or '\\' in filename or '..' in filename: abort(400)
+    # Compressed files are archival records — cannot be restored
+    if (ARCHIVE / (filename + '.gz')).exists():
+        abort(409, 'This file has been compressed for archival and cannot be restored.')
     src = ARCHIVE / filename
     if not src.exists(): abort(404)
     shutil.move(str(src), str(JOBS / filename))
@@ -467,7 +783,17 @@ def delete_errorfile(filename):
     p.unlink()
     return '', 204
 
+@app.route('/api/errorfiles/dismiss-all', methods=['POST'])
+def dismiss_all_errorfiles():
+    for p in ERRORS.iterdir():
+        if p.is_file() and p.suffix.lower() == '.txt' and p.name.startswith('ERROR_'):
+            p.unlink(missing_ok=True)
+    return '', 204
+
 # ── CSV validation ────────────────────────────────────
+_INVALID_VALUES  = {'nan', 'inf', '-inf', '+inf'}
+_VALID_HEADER_RE = re.compile(r'^[A-Za-z0-9_ \-\.]+$')
+
 def parse_csv_meta(path):
     DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
     with open(path, newline='', encoding='utf-8-sig') as fh:
@@ -476,12 +802,31 @@ def parse_csv_meta(path):
     headers = [h.strip() for h in rows[0]]
     while headers and not headers[-1]: headers.pop()
     if len(headers) < 2: raise ValueError('Need at least date + one numeric column.')
+    # Validate header characters (skip col 0 — date column)
+    for h in headers[1:]:
+        if not _VALID_HEADER_RE.match(h):
+            bad_chars = ', '.join(sorted({c for c in h if not re.match(r'[A-Za-z0-9_ \-\.]', c)}))
+            raise ValueError(f'Column header "{h}" contains invalid characters: {bad_chars}. '
+                             f'Headers may only contain letters, numbers, spaces, hyphens, underscores, and dots.')
     dates = []
     for i, row in enumerate(rows[1:], 2):
         d = row[0].strip() if row else ''
         if not DATE_RE.match(d): raise ValueError(f'Row {i}: bad date "{d}".')
         dates.append(d)
-    return {'headers':headers, 'dateRange':[dates[0],dates[-1]], 'length':len(dates)}
+        # Check numeric columns for NaN, inf, and empty cells
+        for j, col_name in enumerate(headers[1:], 1):
+            val = row[j].strip() if j < len(row) else ''
+            if val == '':
+                raise ValueError(f'Row {i}, column "{col_name}": empty cell. Fill or remove before uploading.')
+            if val.lower() in _INVALID_VALUES:
+                raise ValueError(f'Row {i}, column "{col_name}": invalid value "{val}". Fix or remove before uploading.')
+    length = len(dates)
+    warning = ''
+    if length < 30:
+        warning = f'This series has {length} timestamps. Units process requires a minimum of 30 for reliable results.'
+    elif length < 100:
+        warning = f'This series has {length} timestamps. Binary process requires a minimum of 100 for reliable results.'
+    return {'headers': headers, 'dateRange': [dates[0], dates[-1]], 'length': length, 'warning': warning}
 
 
 # ── SML Job Submit ────────────────────────────────────────
@@ -491,7 +836,6 @@ def submit_sml():
     Accepts a job submission from the dashboard.
     Reads the data file from input/, generates the .ini, uploads both to S3.
     Data file first, .ini second (triggers Lambda).
-    CLI mode only for now — boto3 uses ambient AWS credentials.
     """
     try:
         pass  # boto3 available via get_boto_session()
@@ -508,11 +852,15 @@ def submit_sml():
 
     if not series_filename: abort(400, 'series_filename required')
     if not descriptor:      abort(400, 'descriptor required')
-    if process not in ('binary', 'units'): abort(400, 'process must be binary or units')
+    if process not in ('binary', 'units', 'pdfs', 'interaction', 'corr', 'forecast'):
+        abort(400, 'process must be binary, units, pdfs, interaction, corr, or forecast')
     if not custid:          abort(400, 'custid not configured')
 
     # TSU balance guards
-    balance = get_tsu_balance_from_dynamo()
+    try:
+        balance = get_tsu_balance_from_dynamo()
+    except PasswordChangeRequiredError as e:
+        return jsonify({'error': str(e), 'password_change_required': True}), 401
     if balance is None:
         abort(402, 'No TSUs funded. Request TSUs before submitting jobs.')
     if balance < -100:
@@ -532,6 +880,8 @@ def submit_sml():
 
     data_filename = f'{descriptor}.csv'
 
+    horizon      = b.get('horizon', 18)
+
     # Build .ini content
     file_output = f'{OUTPUT_BUCKET}/{custid}'
     user_output = f'{custid}_{slug}_{process}' if slug else f'{custid}_{process}'
@@ -543,13 +893,47 @@ def submit_sml():
             f'Measurements = {measurements}\n'
             f'Crumbs = {user_output}\n\n'
         )
-    else:  # units
+    elif process == 'units':
         ini_filename = f'measure_{descriptor}.ini'
         ini_content  = (
             f'[Default]\n'
             f'FileOutput = {file_output}\n'
             f'Measurements = {measurements}\n'
             f'Crumbs = {user_output}\n\n'
+        )
+    elif process == 'pdfs':
+        ini_filename = f'pdfs_{descriptor}.ini'
+        ini_content  = (
+            f'[Default]\n'
+            f'FileOutput = {file_output}\n'
+            f'Measurements = {measurements}\n'
+            f'Crumbs = {user_output}\n'
+            f'ConfidenceLevel = 0.95\n\n'
+        )
+    elif process == 'interaction':
+        ini_filename = f'interaction_{descriptor}.ini'
+        ini_content  = (
+            f'[Default]\n'
+            f'FileOutput = {file_output}\n'
+            f'Measurements = {measurements}\n'
+            f'Crumbs = {user_output}\n\n'
+        )
+    elif process == 'corr':
+        ini_filename = f'corr_{descriptor}.ini'
+        ini_content  = (
+            f'[Default]\n'
+            f'FileOutput = {file_output}\n'
+            f'Measurements = {measurements}\n'
+            f'Crumbs = {user_output}\n\n'
+        )
+    else:  # forecast
+        ini_filename = f'forecast_{descriptor}.ini'
+        ini_content  = (
+            f'[Default]\n'
+            f'FileOutput = {file_output}\n'
+            f'Measurements = {measurements}\n'
+            f'Crumbs = {user_output}\n'
+            f'Horizon = {horizon}\n\n'
         )
 
     # Upload to S3 — data file first (header stripped), .ini second
@@ -581,6 +965,8 @@ def submit_sml():
             ACL='bucket-owner-full-control'
         )
 
+    except PasswordChangeRequiredError as e:
+        return jsonify({'error': str(e), 'password_change_required': True}), 401
     except Exception as e:
         abort(500, f'S3 upload failed: {str(e)}')
 
@@ -592,41 +978,11 @@ def submit_sml():
 
 
 # ── S3 Download Agent ─────────────────────────────────
-def _s3_delete_with_retry(s3, bucket, key, filename, max_retries=3):
-    """
-    Delete a file from S3 after successful download. Retries up to max_retries
-    times with exponential backoff (2s, 4s, 8s). Logs a warning and moves on
-    if all retries are exhausted — the file is safely local regardless.
-    """
-    for attempt in range(1, max_retries + 1):
-        try:
-            s3.delete_object(Bucket=bucket, Key=key)
-            logging.info(f'S3 agent: deleted {filename} from s3://{bucket}/{key}')
-            return True
-        except Exception as e:
-            wait = 2 ** attempt  # 2s, 4s, 8s
-            if attempt < max_retries:
-                logging.warning(
-                    f'S3 agent: delete failed for {filename} (attempt {attempt}/{max_retries}), '
-                    f'retrying in {wait}s: {e}'
-                )
-                time.sleep(wait)
-            else:
-                logging.warning(
-                    f'S3 agent: delete failed for {filename} after {max_retries} attempts — '
-                    f'file is safely local, continuing: {e}'
-                )
-    return False
-
-
 def s3_download_agent(downloaded_this_session):
     """
     Background thread. Polls output S3 bucket for new files belonging to this
-    custid and downloads them to WATCH_PATH. After each successful download the
-    file is deleted from S3 — this is the security pledge (processing complete =
-    file downloaded) and prevents re-download on subsequent polls.
-    Runs every AGENT_INTERVAL seconds.
-    CLI mode: boto3 uses ambient ~/.aws/credentials.
+    custid and downloads them to WATCH_PATH. Only downloads files not already
+    present on disk. Runs every AGENT_INTERVAL seconds.
     """
     if not CUSTID:
         logging.warning('S3 agent: custid not configured — agent disabled.')
@@ -676,7 +1032,11 @@ def s3_download_agent(downloaded_this_session):
                             existing_err.add(filename)
                             downloaded_this_session.add('errors/' + filename)
                             downloaded += 1
-                            _s3_delete_with_retry(s3, OUTPUT_BUCKET, key, filename)
+                            try:
+                                s3.delete_object(Bucket=OUTPUT_BUCKET, Key=key)
+                                logging.info(f'S3 agent: deleted {key} from S3')
+                            except Exception as de:
+                                logging.warning(f'S3 agent: downloaded {filename} but could not delete from S3: {de}')
                         except Exception as e:
                             logging.error(f'S3 agent: failed to download {key}: {e}')
                         continue
@@ -696,7 +1056,11 @@ def s3_download_agent(downloaded_this_session):
                         existing_csv.add(filename)
                         downloaded_this_session.add(filename)
                         downloaded += 1
-                        _s3_delete_with_retry(s3, OUTPUT_BUCKET, key, filename)
+                        try:
+                            s3.delete_object(Bucket=OUTPUT_BUCKET, Key=key)
+                            logging.info(f'S3 agent: deleted {key} from S3')
+                        except Exception as de:
+                            logging.warning(f'S3 agent: downloaded {filename} but could not delete from S3: {de}')
                     except Exception as e:
                         logging.error(f'S3 agent: failed to download {key}: {e}')
 
@@ -739,6 +1103,8 @@ def file_watcher(downloaded_this_session):
                             shutil.copy2(str(src), str(ERRORS / filename))
                             logging.info(f'File watcher: copied {filename} → errors/')
                             existing_errs.add(filename)
+                            src.unlink(missing_ok=True)
+                            logging.info(f'File watcher: deleted {filename} from downloads/errors/')
                         except Exception as e:
                             logging.error(f'File watcher: failed to copy error {filename}: {e}')
                     else:
@@ -750,12 +1116,46 @@ def file_watcher(downloaded_this_session):
                             shutil.copy2(str(src), str(JOBS / filename))
                             logging.info(f'File watcher: copied {filename} → jobs/')
                             existing_jobs.add(filename)
+                            src.unlink(missing_ok=True)
+                            logging.info(f'File watcher: deleted {filename} from downloads/')
                         except Exception as e:
                             logging.error(f'File watcher: failed to copy {filename}: {e}')
         except Exception as e:
             logging.error(f'File watcher: poll error: {e}')
 
         time.sleep(WATCH_INTERVAL)
+
+
+# ── Archive Compression Sweep ─────────────────────────
+ARCHIVE_COMPRESS_DAYS = 14
+
+def compress_old_archives():
+    """Compress .csv files in archive/ older than 14 days to .csv.gz in place."""
+    cutoff = time.time() - (ARCHIVE_COMPRESS_DAYS * 86400)
+    compressed = 0
+    for p in list(ARCHIVE.iterdir()):
+        if not p.is_file() or p.suffix.lower() != '.csv':
+            continue
+        if p.stat().st_mtime > cutoff:
+            continue
+        gz_path = p.with_suffix('.csv.gz')
+        try:
+            with open(p, 'rb') as f_in, gzip.open(gz_path, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            p.unlink()
+            compressed += 1
+            logging.info(f'Archive sweep: compressed {p.name} → {gz_path.name}')
+        except Exception as e:
+            logging.error(f'Archive sweep: failed to compress {p.name}: {e}')
+            gz_path.unlink(missing_ok=True)
+    if compressed:
+        logging.info(f'Archive sweep: {compressed} file(s) compressed')
+
+def archive_compression_thread():
+    """Daily background sweep to compress old archive files."""
+    while True:
+        time.sleep(86400)
+        compress_old_archives()
 
 
 # ── Start background threads ──────────────────────────
@@ -791,6 +1191,11 @@ if os.environ.get('WERKZEUG_RUN_MAIN') != 'false':
     threading.Thread(target=file_watcher,
                      args=(_downloaded_this_session,),
                      daemon=True, name='file-watcher').start()
+
+    # Compress archive files older than 14 days — run once at startup then daily
+    compress_old_archives()
+    threading.Thread(target=archive_compression_thread,
+                     daemon=True, name='archive-compressor').start()
 
 if __name__ == '__main__':
     print('SML-App running at http://localhost:5000')

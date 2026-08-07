@@ -77,7 +77,7 @@
       letter-spacing: 0.04em;
     }
 
-    input {
+    input, select {
       width: 100%;
       background: #0d1117;
       border: 1px solid #30363d;
@@ -89,7 +89,7 @@
       transition: border-color 0.15s;
     }
 
-    input:focus {
+    input:focus, select:focus {
       border-color: #58a6ff;
     }
 
@@ -188,7 +188,7 @@
 
   <div id="form-section">
     <h1>Welcome to SML-App</h1>
-    <p class="subtitle">Enter the customer ID and email from your registration email to get started.</p>
+    <p class="subtitle">Enter your account details from your registration email to get started.</p>
 
     <div class="field">
       <label for="custid">Customer ID</label>
@@ -200,6 +200,20 @@
       <label for="email">Email address</label>
       <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
       <div class="hint">Used for TSU invoices and job notifications.</div>
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="Cognito account password" autocomplete="new-password">
+      <div class="hint">Stored only in this machine's OS keychain — never written to disk or sent anywhere except Cognito.</div>
+    </div>
+
+    <div class="field">
+      <label for="region">Region</label>
+      <select id="region">
+        <option value="">Loading regions…</option>
+      </select>
+      <div class="hint">The AWS region your account was provisioned in.</div>
     </div>
 
     <button class="btn" id="save-btn" onclick="saveSetup()">Save &amp; Launch</button>
@@ -221,6 +235,24 @@
 </div>
 
 <script>
+  async function loadRegions() {
+    const select = document.getElementById('region');
+    try {
+      const res = await fetch('/api/regions');
+      const regions = await res.json();
+      if (!regions.length) {
+        select.innerHTML = '<option value="">No regions configured</option>';
+        return;
+      }
+      select.innerHTML = regions
+        .map(r => `<option value="${r.code}">${r.label}</option>`)
+        .join('');
+    } catch (err) {
+      select.innerHTML = '<option value="">Could not load regions</option>';
+    }
+  }
+  loadRegions();
+
   async function saveSetup() {
     const custid = document.getElementById('custid').value.trim();
     const email  = document.getElementById('email').value.trim();
@@ -233,6 +265,14 @@
     if (!email)  { showError('Please enter your email address.'); return; }
     if (!email.includes('@')) { showError('Please enter a valid email address.'); return; }
 
+    const password = document.getElementById('password').value;
+    const region   = document.getElementById('region').value;
+
+    if (!password) { showError('Please enter your Cognito password.'); return; }
+    if (!region)    { showError('Please select a region.'); return; }
+
+    const payload = { custid, email, password, region };
+
     btn.disabled = true;
     btn.textContent = 'Saving…';
 
@@ -240,7 +280,7 @@
       const res = await fetch('/api/setup', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ custid, email })
+        body:    JSON.stringify(payload)
       });
 
       if (!res.ok) {

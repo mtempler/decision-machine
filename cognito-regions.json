@@ -1,0 +1,8 @@
+{
+  "us-east-1": {
+    "label": "US East (N. Virginia)",
+    "user_pool_id": "us-east-1_i3lSLXsPs",
+    "client_id": "5jrjngok4d1refsmiprujnb5gd",
+    "identity_pool_id": "us-east-1:4244f384-c4be-45ad-ab19-d1fa9b117c1b"
+  }
+}
