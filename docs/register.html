@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get SML-App — Decision Machine</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06090f; --surface: #0d1420; --surface2: #111927;
+    --border: #1e2d45; --border2: #253650;
+    --blue: #2e7eff; --blue-glow: rgba(46,126,255,0.15);
+    --text: #e8edf5; --text-dim: #8a9ab5; --text-faint: #4a5c78;
+    --green: #2de8a0; --red: #ff4d6a; --amber: #ffb347;
+    --amber-glow: rgba(255,179,71,0.12);
+    --radius: 14px; --radius-sm: 8px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+  body::before {
+    content: ''; position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 500px;
+    background: radial-gradient(ellipse, rgba(46,126,255,0.07) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border); padding: 0 40px;
+    background: rgba(6,9,15,0.88); backdrop-filter: blur(20px);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-inner { max-width: 900px; margin: 0 auto; height: 64px; display: flex; align-items: center; }
+  .logo { font-family: 'DM Serif Display', serif; font-size: 20px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 10px; }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 12px var(--blue); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 8px var(--blue); } 50% { box-shadow: 0 0 22px var(--blue); } }
+
+  /* ── MAIN ── */
+  main { flex: 1; max-width: 540px; margin: 0 auto; padding: 60px 24px 80px; position: relative; z-index: 1; width: 100%; }
+
+  h1 { font-family: 'DM Serif Display', serif; font-size: 36px; margin-bottom: 12px; }
+  .subtitle { font-size: 15px; color: var(--text-dim); line-height: 1.6; margin-bottom: 40px; }
+
+  /* ── FORM CARD ── */
+  .form-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 32px; position: relative; overflow: hidden;
+  }
+  .form-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--amber), rgba(255,179,71,0.3), transparent);
+  }
+
+  .form-group { margin-bottom: 20px; }
+  .form-label {
+    display: block; font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 7px;
+  }
+  .form-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 14px; color: var(--text);
+    font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .form-input:focus { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .form-input::placeholder { color: var(--text-faint); }
+  .form-input[readonly] {
+    background: var(--surface); color: var(--text-dim); cursor: default;
+    border-color: var(--border);
+  }
+  .form-input[readonly]:focus { border-color: var(--border); box-shadow: none; }
+  .form-hint { font-size: 12px; color: var(--text-faint); margin-top: 5px; line-height: 1.5; }
+
+  /* ── PLATFORM CONFIRM ── */
+  .platform-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 20px;
+  }
+  .platform-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  }
+  .platform-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+  .platform-value { font-family: 'DM Mono', monospace; font-size: 14px; color: var(--text); }
+  .platform-question { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+  .platform-btns { display: flex; gap: 10px; }
+  .platform-btn {
+    padding: 6px 16px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-dim); font-size: 13px;
+    font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.15s;
+  }
+  .platform-btn:hover { border-color: var(--border2); color: var(--text); }
+  .platform-btn.selected { border-color: var(--green); color: var(--green); background: rgba(45,232,160,0.08); }
+  .platform-btn.selected-no { border-color: var(--amber); color: var(--amber); background: rgba(255,179,71,0.08); }
+  .platform-note { font-size: 12px; color: var(--text-faint); margin-top: 10px; display: none; }
+  .platform-note.show { display: block; }
+
+  .btn-primary {
+    width: 100%; padding: 12px 20px; border-radius: var(--radius-sm);
+    background: var(--amber); border: none; color: #111;
+    font-size: 14px; font-weight: 700; font-family: 'DM Sans', sans-serif;
+    cursor: pointer; transition: background 0.2s; margin-top: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-primary:hover { background: #ffc55a; }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .spinner { width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #111; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg { font-size: 13px; color: var(--red); margin-top: 14px; display: none; }
+  .error-msg.show { display: block; }
+
+  /* ── SUCCESS PANEL ── */
+  .success-panel { display: none; text-align: center; padding: 16px 0; }
+  .success-panel.show { display: block; }
+  .success-icon { font-size: 40px; margin-bottom: 16px; }
+  .success-title { font-family: 'DM Serif Display', serif; font-size: 24px; margin-bottom: 10px; }
+  .success-body { font-size: 14px; color: var(--text-dim); line-height: 1.7; }
+  .success-custid {
+    display: inline-block; margin: 16px 0; padding: 8px 16px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font-family: 'DM Mono', monospace;
+    font-size: 16px; color: var(--amber); font-weight: 500;
+  }
+
+  /* ── FOOTER ── */
+  footer { text-align: center; padding: 24px; font-size: 12px; color: var(--text-faint); border-top: 1px solid var(--border); }
+  footer a { color: var(--text-faint); }
+
+  @media (max-width: 600px) {
+    header { padding: 0 16px; }
+    main { padding: 40px 16px 60px; }
+    h1 { font-size: 28px; }
+    .form-card { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a href="https://decision-machine.com" class="logo">
+      <div class="logo-dot"></div>
+      Decision Machine
+    </a>
+  </div>
+</header>
+
+<main>
+  <h1>Get SML-App</h1>
+  <p class="subtitle">You've completed SML-T training. Register to receive your personalised SML-App build for Windows.</p>
+
+  <div class="form-card">
+
+    <div id="formSection">
+      <div class="form-group">
+        <label class="form-label" for="custid">Customer ID</label>
+        <input class="form-input" type="text" id="custid" readonly>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="email">Email *</label>
+        <input class="form-input" type="email" id="email" placeholder="you@example.com" autocomplete="email">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password *</label>
+        <input class="form-input" type="password" id="password" placeholder="Choose a password" autocomplete="new-password">
+        <div class="form-hint">You'll use this to sign into SML-App — choose something you'll remember.</div>
+      </div>
+
+      <!-- Platform confirmation -->
+      <div class="platform-card" id="platformCard" style="display:none;">
+        <div class="platform-header">
+          <span class="platform-label">Detected Platform</span>
+          <span class="platform-value" id="platformDisplay">—</span>
+        </div>
+        <div class="platform-question">Is this the machine you'll be installing SML-App on?</div>
+        <div class="platform-btns">
+          <button class="platform-btn" id="btnYes" onclick="confirmPlatform(true)">Yes, this machine</button>
+          <button class="platform-btn" id="btnNo"  onclick="confirmPlatform(false)">No, different machine</button>
+        </div>
+        <div class="platform-note" id="platformNote">
+          No problem — SML-App runs on any Windows x64 machine. Your installer will work regardless of where you run it.
+        </div>
+      </div>
+
+      <div class="error-msg" id="errorMsg"></div>
+
+      <button class="btn-primary" id="submitBtn" onclick="submitForm()">
+        Register &amp; Build My App
+      </button>
+    </div>
+
+    <div class="success-panel" id="successPanel">
+      <div class="success-icon">✉️</div>
+      <div class="success-title">Check your inbox</div>
+      <div class="success-body">
+        Your personalised SML-App is being built.<br>
+        A download link will be sent to<br>
+        <strong id="successEmail"></strong><br>
+        within a few minutes.<br><br>
+        Your customer ID is<br>
+        <span class="success-custid" id="successCustid"></span>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  By registering you agree to our <a href="https://decision-machine.com/terms">terms of service</a>.
+  Your data stays on your machine.
+</footer>
+
+<script>
+const API_URL = 'https://gw5lrum2p9.execute-api.us-east-1.amazonaws.com/prod/register';
+
+// Read URL params
+const params        = new URLSearchParams(window.location.search);
+const custidParam   = params.get('custid') || '';
+const osParam       = params.get('os')     || '';
+const archParam     = params.get('arch')   || '';
+const emailParam    = params.get('email')  || '';
+
+let platformConfirmed = null;
+
+// Pre-fill custid
+document.getElementById('custid').value = custidParam;
+
+// Pre-fill email and make read-only if provided
+if (emailParam) {
+  const emailInput = document.getElementById('email');
+  emailInput.value    = emailParam;
+  emailInput.readOnly = true;
+  emailInput.placeholder = '';
+}
+
+// Show platform card if platform info present
+if (osParam && archParam) {
+  document.getElementById('platformDisplay').textContent = `${osParam} ${archParam}`;
+  document.getElementById('platformCard').style.display  = '';
+}
+
+function confirmPlatform(yes) {
+  platformConfirmed = yes;
+  document.getElementById('btnYes').className = 'platform-btn' + (yes ? ' selected' : '');
+  document.getElementById('btnNo').className  = 'platform-btn' + (!yes ? ' selected-no' : '');
+  const note = document.getElementById('platformNote');
+  note.classList.toggle('show', !yes);
+}
+
+async function submitForm() {
+  const custid   = document.getElementById('custid').value.trim();
+  const email    = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const errorEl  = document.getElementById('errorMsg');
+  const btn      = document.getElementById('submitBtn');
+
+  errorEl.classList.remove('show');
+
+  if (!email) {
+    errorEl.textContent = 'Please enter your email address.';
+    errorEl.classList.add('show'); return;
+  }
+  if (!email.includes('@')) {
+    errorEl.textContent = 'Please enter a valid email address.';
+    errorEl.classList.add('show'); return;
+  }
+  if (!password) {
+    errorEl.textContent = 'Please choose a password.';
+    errorEl.classList.add('show'); return;
+  }
+  // If platform card shown, require confirmation
+  if (osParam && archParam && platformConfirmed === null) {
+    errorEl.textContent = 'Please confirm whether this is the machine you\'ll install SML-App on.';
+    errorEl.classList.add('show'); return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Building your app…';
+
+  try {
+    const res = await fetch(API_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        custid,
+        email,
+        password,
+        region:        'us-east-1',
+        platform_os:   osParam,
+        platform_arch: archParam,
+      })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Registration failed. Please try again.';
+      errorEl.classList.add('show');
+      btn.disabled = false;
+      btn.innerHTML = 'Register &amp; Build My App';
+      return;
+    }
+
+    document.getElementById('successEmail').textContent  = email;
+    document.getElementById('successCustid').textContent = custid;
+    document.getElementById('formSection').style.display = 'none';
+    document.getElementById('successPanel').classList.add('show');
+
+  } catch(e) {
+    errorEl.textContent = 'Could not connect. Please check your connection and try again.';
+    errorEl.classList.add('show');
+    btn.disabled = false;
+    btn.innerHTML = 'Register &amp; Build My App';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitForm();
+});
+</script>
+</body>
+</html>
