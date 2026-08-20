@@ -97,6 +97,11 @@
       color: #484f58;
     }
 
+    input:disabled {
+      color: #8b949e;
+      cursor: default;
+    }
+
     .hint {
       font-size: 0.75rem;
       color: #6e7681;
@@ -188,32 +193,22 @@
 
   <div id="form-section">
     <h1>Welcome to SML-App</h1>
-    <p class="subtitle">Enter your account details from your registration email to get started.</p>
+    <p class="subtitle">Your account is already configured for this build. Enter your Cognito password once to store it securely on this machine.</p>
 
     <div class="field">
-      <label for="custid">Customer ID</label>
-      <input id="custid" type="text" placeholder="e.g. tGwuZQqEcx" autocomplete="off" spellcheck="false">
-      <div class="hint">Provided in your registration confirmation email.</div>
+      <label>Customer ID</label>
+      <input id="custid" type="text" disabled>
     </div>
 
     <div class="field">
-      <label for="email">Email address</label>
-      <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
-      <div class="hint">Used for TSU invoices and job notifications.</div>
+      <label>Email address</label>
+      <input id="email" type="email" disabled>
     </div>
 
     <div class="field">
       <label for="password">Password</label>
       <input id="password" type="password" placeholder="Cognito account password" autocomplete="new-password">
       <div class="hint">Stored only in this machine's OS keychain — never written to disk or sent anywhere except Cognito.</div>
-    </div>
-
-    <div class="field">
-      <label for="region">Region</label>
-      <select id="region">
-        <option value="">Loading regions…</option>
-      </select>
-      <div class="hint">The AWS region your account was provisioned in.</div>
     </div>
 
     <button class="btn" id="save-btn" onclick="saveSetup()">Save &amp; Launch</button>
@@ -235,43 +230,27 @@
 </div>
 
 <script>
-  async function loadRegions() {
-    const select = document.getElementById('region');
+  async function loadConfig() {
     try {
-      const res = await fetch('/api/regions');
-      const regions = await res.json();
-      if (!regions.length) {
-        select.innerHTML = '<option value="">No regions configured</option>';
-        return;
-      }
-      select.innerHTML = regions
-        .map(r => `<option value="${r.code}">${r.label}</option>`)
-        .join('');
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      document.getElementById('custid').value = cfg.custid || '(not configured)';
+      document.getElementById('email').value  = cfg.email  || '(not configured)';
     } catch (err) {
-      select.innerHTML = '<option value="">Could not load regions</option>';
+      document.getElementById('custid').value = '(could not load)';
+      document.getElementById('email').value  = '(could not load)';
     }
   }
-  loadRegions();
+  loadConfig();
 
   async function saveSetup() {
-    const custid = document.getElementById('custid').value.trim();
-    const email  = document.getElementById('email').value.trim();
-    const btn    = document.getElementById('save-btn');
-    const errEl  = document.getElementById('error-msg');
+    const btn   = document.getElementById('save-btn');
+    const errEl = document.getElementById('error-msg');
 
     errEl.style.display = 'none';
 
-    if (!custid) { showError('Please enter your customer ID.'); return; }
-    if (!email)  { showError('Please enter your email address.'); return; }
-    if (!email.includes('@')) { showError('Please enter a valid email address.'); return; }
-
     const password = document.getElementById('password').value;
-    const region   = document.getElementById('region').value;
-
     if (!password) { showError('Please enter your Cognito password.'); return; }
-    if (!region)    { showError('Please select a region.'); return; }
-
-    const payload = { custid, email, password, region };
 
     btn.disabled = true;
     btn.textContent = 'Saving…';
@@ -280,7 +259,7 @@
       const res = await fetch('/api/setup', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload)
+        body:    JSON.stringify({ password })
       });
 
       if (!res.ok) {

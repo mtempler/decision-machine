@@ -264,66 +264,30 @@ def get_regions():
 # ── Setup wizard ──────────────────────────────────────
 @app.route('/api/setup', methods=['POST'])
 def save_setup():
-    """Write sml-app.config from first-launch wizard input.
-    Password is written to the OS keychain via `keyring` and never touches disk.
-    Cognito username is always the account email — no separate field. Pool/client/
-    identity-pool IDs are resolved server-side from cognito-regions.json based on
-    the region the customer picked from the dropdown; only regions present in that
-    file are selectable, so an unsupported region can't be submitted."""
-    b               = request.get_json(force=True)
-    custid          = b.get('custid', '').strip()
-    email           = b.get('email', '').strip()
-    region_code     = b.get('region', '').strip()
-    password        = b.get('password', '')
-    cognito_username = email
-
-    if not custid:      abort(400, 'custid is required')
-    if not email:        abort(400, 'email is required')
-    if not region_code: abort(400, 'region is required')
-    if not password:    abort(400, 'password is required')
+    """Seed the OS keychain with the Cognito password for this build's
+    already-provisioned identity. custid/email/cognito_username/cognito_region/
+    user_pool_id/client_id/identity_pool_id are baked into sml-app.config at
+    build time (build.bat, per the SML-Training provisioning handoff — see
+    Authentication & Access in CLAUDE-architecture.md) — this endpoint never
+    asks for or writes any of them, only the password, which is never written
+    to disk."""
+    if not (CUSTID and COGNITO_USERNAME and USER_POOL_ID and CLIENT_ID and IDENTITY_POOL_ID):
+        abort(500, 'This build is not provisioned — sml-app.config is missing identity fields. '
+                    'Request a new build rather than entering these details manually.')
     if keyring is None:
         abort(500, 'keyring package not installed on this build — cannot store password securely')
 
-    region_map  = _load_region_map()
-    region_info = region_map.get(region_code)
-    if not region_info:
-        abort(400, f'Unknown region "{region_code}" — cognito-regions.json may be out of date')
-
-    user_pool_id     = region_info.get('user_pool_id', '')
-    client_id        = region_info.get('client_id', '')
-    identity_pool_id = region_info.get('identity_pool_id', '')
-    if not (user_pool_id and client_id and identity_pool_id):
-        abort(500, f'cognito-regions.json entry for "{region_code}" is incomplete')
+    b        = request.get_json(force=True)
+    password = b.get('password', '')
+    if not password: abort(400, 'password is required')
 
     try:
-        keyring.set_password(KEYRING_SERVICE, cognito_username, password)
+        keyring.set_password(KEYRING_SERVICE, COGNITO_USERNAME, password)
     except Exception as e:
         abort(500, f'Failed to store password in OS keychain: {e}')
-    logging.info(f'Setup wizard: stored Cognito password in OS keychain for {cognito_username}')
+    logging.info(f'Setup wizard: stored Cognito password in OS keychain for {COGNITO_USERNAME}')
 
-    config_content = (
-        '[identity]\n'
-        f'custid           = {custid}\n'
-        f'email            = {email}\n'
-        f'cognito_username = {cognito_username}\n'
-        f'cognito_region   = {region_code}\n'
-        f'user_pool_id     = {user_pool_id}\n'
-        f'client_id        = {client_id}\n'
-        f'identity_pool_id = {identity_pool_id}\n\n'
-        '[storage]\n'
-        'input_bucket   = customer.decision-machine.com\n'
-        'output_bucket  = output.customer.decision-machine.com\n'
-        'watch_path     = downloads\n'
-        'watch_interval = 30\n'
-        'agent_interval = 60\n'
-    )
-    try:
-        _cfg_path.write_text(config_content, encoding='utf-8')
-        logging.info(f'Setup wizard: wrote sml-app.config for custid={custid}')
-    except Exception as e:
-        abort(500, f'Failed to write sml-app.config: {e}')
-
-    return jsonify({'status': 'ok', 'custid': custid})
+    return jsonify({'status': 'ok', 'custid': CUSTID})
 
 # ── Config endpoint ───────────────────────────────────
 @app.route('/api/config')
