@@ -1032,11 +1032,12 @@ def s3_download_agent(downloaded_this_session):
                             existing_err.add(filename)
                             downloaded_this_session.add('errors/' + filename)
                             downloaded += 1
+                            logging.info(f'S3 agent: attempting delete_object bucket={OUTPUT_BUCKET!r} key={key!r}')
                             try:
-                                s3.delete_object(Bucket=OUTPUT_BUCKET, Key=key)
-                                logging.info(f'S3 agent: deleted {key} from S3')
+                                resp = s3.delete_object(Bucket=OUTPUT_BUCKET, Key=key)
+                                logging.info(f'S3 agent: deleted {key} from S3 — response={resp}')
                             except Exception as de:
-                                logging.warning(f'S3 agent: downloaded {filename} but could not delete from S3: {de}')
+                                logging.error(f'S3 agent: DELETE FAILED for {filename}: {type(de).__name__}: {de}', exc_info=True)
                         except Exception as e:
                             logging.error(f'S3 agent: failed to download {key}: {e}')
                         continue
@@ -1056,11 +1057,12 @@ def s3_download_agent(downloaded_this_session):
                         existing_csv.add(filename)
                         downloaded_this_session.add(filename)
                         downloaded += 1
+                        logging.info(f'S3 agent: attempting delete_object bucket={OUTPUT_BUCKET!r} key={key!r}')
                         try:
-                            s3.delete_object(Bucket=OUTPUT_BUCKET, Key=key)
-                            logging.info(f'S3 agent: deleted {key} from S3')
+                            resp = s3.delete_object(Bucket=OUTPUT_BUCKET, Key=key)
+                            logging.info(f'S3 agent: deleted {key} from S3 — response={resp}')
                         except Exception as de:
-                            logging.warning(f'S3 agent: downloaded {filename} but could not delete from S3: {de}')
+                            logging.error(f'S3 agent: DELETE FAILED for {filename}: {type(de).__name__}: {de}', exc_info=True)
                     except Exception as e:
                         logging.error(f'S3 agent: failed to download {key}: {e}')
 
@@ -1159,7 +1161,14 @@ def archive_compression_thread():
 
 
 # ── Start background threads ──────────────────────────
-if os.environ.get('WERKZEUG_RUN_MAIN') != 'false':
+# Frozen build (launcher.py, debug=False): no Werkzeug reloader is ever
+# involved, so this is the only process — always start.
+# Unfrozen dev run (python server.py, debug=True): Werkzeug's reloader forks
+# a child (WERKZEUG_RUN_MAIN='true') and keeps the original process alive as
+# an unrelated file-watching monitor. Both processes execute this module
+# top-to-bottom, so without this check both would start their own S3 agent /
+# file watcher / archive-compressor threads — start only in the child.
+if getattr(sys, 'frozen', False) or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     _downloaded_this_session = set()
 
     # Pre-populate with any files already in watch_path that haven't

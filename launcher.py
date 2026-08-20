@@ -34,7 +34,7 @@ os.chdir(str(BASE_DIR))
 
 # Copy bundled HTML into BASE_DIR on every launch (always up to date)
 # Only sml-app.config is preserved if already present (user-personalised)
-for filename in ('index.html', 'measurements.html', 'job-plot.html', 'pdfs-table.html'):
+for filename in ('index.html', 'measurements.html', 'job-plot.html', 'pdfs-table.html', 'setup.html'):
     src  = BUNDLE_DIR / filename
     dest = BASE_DIR   / filename
     if src.exists():
