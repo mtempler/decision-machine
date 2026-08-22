@@ -76,10 +76,26 @@ _password_change_required = False  # set when Cognito returns NEW_PASSWORD_REQUI
 
 _EXPIRY_BUFFER = timedelta(minutes=5)
 
+# Guards _boto_session/_creds_expiry/_cognito_obj. Both the S3 agent and the file
+# watcher run as background threads and call get_boto_session() independently of
+# — and concurrently with — foreground Flask request handlers. Without this lock,
+# one thread's authenticate()-in-progress Cognito object can be reset out from
+# under it by another thread's failure handler mid-call, surfacing as either a
+# None id_token (Logins parameter validation error) or an outright
+# "'NoneType' object has no attribute 'id_token'" — both observed in practice.
+_cognito_lock = threading.Lock()
+
 
 class PasswordChangeRequiredError(RuntimeError):
     """Raised when Cognito reports FORCE_CHANGE_PASSWORD for this user. Resolved via
     POST /api/auth/change-password, not by retrying authentication with the old password."""
+    pass
+
+
+class CustidMismatchError(RuntimeError):
+    """Raised when sml-app.config's custid doesn't match the authoritative
+    custom:custid attribute on the authenticated user's Cognito profile.
+    Treated as blocking wherever it's raised — never log-and-continue."""
     pass
 
 
@@ -162,34 +178,78 @@ def _cognito_federated_credentials(id_token):
 
 def get_boto_session():
     global _boto_session, _creds_expiry
-    now_dt = datetime.now(timezone.utc)
-    if _boto_session is not None and now_dt < _creds_expiry - _EXPIRY_BUFFER:
+    with _cognito_lock:
+        now_dt = datetime.now(timezone.utc)
+        if _boto_session is not None and now_dt < _creds_expiry - _EXPIRY_BUFFER:
+            return _boto_session
+
+        try:
+            id_token = _cognito_id_token()
+            creds    = _cognito_federated_credentials(id_token)
+            _boto_session = __import__('boto3').Session(
+                aws_access_key_id     = creds['AccessKeyId'],
+                aws_secret_access_key = creds['SecretKey'],
+                aws_session_token     = creds['SessionToken'],
+            )
+            _creds_expiry = creds['Expiration']
+            logging.info(f'boto3: obtained Cognito-federated credentials for {COGNITO_USERNAME}, '
+                         f'expiring {_creds_expiry.isoformat()}')
+        except Exception as e:
+            logging.error(f'Cognito authentication failed: {e}')
+            # Force a clean password re-auth on the next attempt rather than
+            # repeatedly trying a possibly-stale refresh_token.
+            _cognito_obj_reset()
+            raise
+
         return _boto_session
-
-    try:
-        id_token = _cognito_id_token()
-        creds    = _cognito_federated_credentials(id_token)
-        _boto_session = __import__('boto3').Session(
-            aws_access_key_id     = creds['AccessKeyId'],
-            aws_secret_access_key = creds['SecretKey'],
-            aws_session_token     = creds['SessionToken'],
-        )
-        _creds_expiry = creds['Expiration']
-        logging.info(f'boto3: obtained Cognito-federated credentials for {COGNITO_USERNAME}, '
-                     f'expiring {_creds_expiry.isoformat()}')
-    except Exception as e:
-        logging.error(f'Cognito authentication failed: {e}')
-        # Force a clean password re-auth on the next attempt rather than
-        # repeatedly trying a possibly-stale refresh_token.
-        _cognito_obj_reset()
-        raise
-
-    return _boto_session
 
 
 def _cognito_obj_reset():
     global _cognito_obj
     _cognito_obj = None
+
+
+def _verify_custid_matches_cognito():
+    """Confirm sml-app.config's custid matches the authoritative custom:custid
+    attribute on the authenticated user's Cognito profile. Call this only after
+    get_boto_session() has just succeeded (so _cognito_obj holds a fresh
+    access_token) — it does not itself trigger authentication.
+
+    Raises CustidMismatchError on any mismatch, missing attribute, or lookup
+    failure. Callers must treat that as blocking: no file should reach S3 if
+    this raises.
+    """
+    import boto3
+    with _cognito_lock:
+        access_token = getattr(_cognito_obj, 'access_token', None)
+    if not access_token:
+        raise CustidMismatchError('No active Cognito session — cannot verify custid.')
+
+    idp = boto3.client('cognito-idp', region_name=COGNITO_REGION)
+    try:
+        resp = idp.get_user(AccessToken=access_token)
+    except Exception as e:
+        logging.error(f'custid verification: failed to fetch Cognito user attributes: {e}')
+        raise CustidMismatchError(f'Could not verify custid against Cognito: {e}') from e
+
+    attrs = {a['Name']: a['Value'] for a in resp.get('UserAttributes', [])}
+    cognito_custid = attrs.get('custom:custid', '')
+
+    if not cognito_custid:
+        raise CustidMismatchError(
+            'This Cognito account has no custom:custid attribute set. Contact support.'
+        )
+    if cognito_custid != CUSTID:
+        logging.error(
+            f'custid mismatch: sml-app.config has "{CUSTID}" but the Cognito profile for '
+            f'{COGNITO_USERNAME} has "{cognito_custid}"'
+        )
+        raise CustidMismatchError(
+            f'custid mismatch: this app is configured for custid "{CUSTID}" but your '
+            f'Cognito account is registered to "{cognito_custid}". Request a new build '
+            f'with the correct account, or contact support if this persists.'
+        )
+    return cognito_custid
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
@@ -453,7 +513,8 @@ def request_tsu():
     except PasswordChangeRequiredError as e:
         return jsonify({'error': str(e), 'password_change_required': True}), 401
     except Exception as e:
-        abort(500, f'S3 upload failed: {str(e)}')
+        logging.error(f'TSU request upload failed: {e}', exc_info=True)
+        return jsonify({'error': f'S3 upload failed: {str(e)}'}), 500
     return jsonify({'filename': filename, 'quantity': quantity, 'email': EMAIL}), 200
 
 
@@ -899,6 +960,19 @@ def submit_sml():
             f'Crumbs = {user_output}\n'
             f'Horizon = {horizon}\n\n'
         )
+
+    # Verify custid against Cognito before anything touches S3. get_boto_session()
+    # guarantees a fresh, valid _cognito_obj/access_token; _verify_custid_matches_cognito()
+    # then confirms sml-app.config's custid matches the account's custom:custid attribute.
+    try:
+        get_boto_session()
+        _verify_custid_matches_cognito()
+    except PasswordChangeRequiredError as e:
+        return jsonify({'error': str(e), 'password_change_required': True}), 401
+    except CustidMismatchError as e:
+        return jsonify({'error': str(e), 'custid_mismatch': True}), 403
+    except Exception as e:
+        abort(502, f'Could not reach Cognito to verify custid: {e}')
 
     # Upload to S3 — data file first (header stripped), .ini second
     try:

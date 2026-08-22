@@ -593,6 +593,14 @@
   </div>
 </div>
 
+<div class="auth-banner" id="custidBanner">
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-8.99 3.75h.008v.008h-.008v-.008z"/></svg>
+  <div style="flex:1;">
+    <div class="auth-banner-text">This app's configured customer ID doesn't match your Cognito account. Job submissions are blocked until this is fixed.</div>
+    <div class="auth-banner-detail" id="custidBannerDetail"></div>
+  </div>
+</div>
+
 <main>
   <div class="stats-bar" id="statsBar"></div>
 
@@ -1289,12 +1297,31 @@ function renderCsvTable(text) {
 }
 
 // ── SML JOB MODAL ──────────────────────────────────────
-function openSmlModal(viewId, seriesId) {
+async function openSmlModal(viewId, seriesId) {
   smlViewId   = viewId;
   smlSeriesId = seriesId;
   const v = views.find(v => v.id === viewId);
   const s = v && v.series.find(s => s.id === seriesId);
   if (!s) return;
+
+  // Gate on Cognito readiness right here — this is the one action that actually
+  // needs AWS. A pre-built config (build.bat) can have every identity field set
+  // but no matching local OS-keychain entry yet, since only the setup wizard
+  // writes one. Rather than open a modal whose submit will just fail, send the
+  // customer to setup first. /api/auth/status does a real get_boto_session()
+  // check, so this also catches an expired/wrong stored password, not just an
+  // empty keychain.
+  try {
+    const statusRes  = await fetch('/api/auth/status');
+    const statusData = await statusRes.json();
+    if (!statusData.ok && !statusData.password_change_required) {
+      window.location.href = '/setup.html';
+      return;
+    }
+  } catch (err) {
+    // Can't reach the server at all — let the modal open anyway; its own
+    // submit call will surface a clearer error than blocking silently here.
+  }
 
   // Series display
   document.getElementById('smlSeriesDisplay').textContent = s.name;
@@ -1374,6 +1401,10 @@ async function submitSmlJob() {
       if (data.password_change_required) {
         showPasswordChangeBanner();
         throw new Error('Cognito requires a new password — set one above, then try again.');
+      }
+      if (data.custid_mismatch) {
+        showCustidBanner(data.error);
+        throw new Error('Customer ID mismatch — this job was not submitted.');
       }
       throw new Error(data.error || res.statusText);
     }
@@ -1655,6 +1686,15 @@ async function readErrorBody(res) {
 }
 function showPasswordChangeBanner() {
   document.getElementById('authBanner').classList.add('show');
+}
+
+// ── CUSTID MISMATCH (reactive — shown when Submit Job reports custid_mismatch) ──
+// Not user-fixable from here: the config's custid was set wrong or the account
+// changed. Stays up until the app is reconfigured (new build) and restarted,
+// so it isn't given a dismiss control.
+function showCustidBanner(detail) {
+  document.getElementById('custidBannerDetail').textContent = detail || '';
+  document.getElementById('custidBanner').classList.add('show');
 }
 function hidePasswordChangeBanner() {
   document.getElementById('authBanner').classList.remove('show');
