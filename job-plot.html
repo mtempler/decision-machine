@@ -70,6 +70,18 @@
   /* MAIN */
   main { max-width: 1400px; margin: 0 auto; padding: 40px 40px 80px; position: relative; z-index: 1; }
 
+  .page-layout {
+    display: flex;
+    gap: 0;
+    align-items: flex-start;
+    max-width: 1400px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  .plot-area { flex: 1; min-width: 0; padding: 40px 40px 80px; }
+
   /* UPLOAD ZONE */
   .upload-section {
     background: var(--surface); border: 1px solid var(--border);
@@ -114,6 +126,7 @@
     border: 1px solid var(--border); background: transparent;
     color: var(--text-dim); font-size: 13px; cursor: pointer;
     font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+    text-decoration: none;
   }
   .btn-reupload:hover { border-color: var(--border2); color: var(--text); }
   .btn-reupload svg { width: 14px; height: 14px; }
@@ -207,9 +220,16 @@
   </div>
 </header>
 
-<main id="mainContent">
-  <div class="loading"><div class="spinner"></div><span>Loading job…</span></div>
-</main>
+<div class="page-layout">
+
+  <!-- Plot area -->
+  <div class="plot-area">
+    <main id="mainContent">
+      <div class="loading"><div class="spinner"></div><span>Loading job…</span></div>
+    </main>
+  </div>
+
+</div>
 
 <div class="chart-tooltip" id="chartTooltip"></div>
 
@@ -221,6 +241,7 @@ const fileParam = params.get('file');
 let currentJob   = { csvData: null, filename: fileParam || '' };
 let activeCol    = null;
 let activeSymbol = null;
+let appCustId    = '';
 
 // ── INIT ───────────────────────────────────────────────
 async function init() {
@@ -228,6 +249,16 @@ async function init() {
 
   document.getElementById('headerTitle').textContent = fileParam;
   document.title = `SML — ${fileParam}`;
+
+  // Load config (custid)
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    appCustId = cfg.custid || '';
+    if (appCustId) {
+      document.getElementById('customerIdLabel').textContent = appCustId;
+      document.getElementById('customerIdBadge').style.display = 'flex';
+    }
+  } catch(e) { /* non-fatal */ }
 
   try {
     const res = await fetch('/api/jobfiles/' + encodeURIComponent(fileParam) + '/csv');
@@ -351,10 +382,8 @@ function parseCSV(text, filename) {
     for (let j = 0; j < measureCols.length; j++) {
       const val = cols[j + 2];
       const num = parseFloat(val);
-      if (isNaN(num)) {
-        showUploadError(`Row ${i+1}, column "${measureCols[j]}": "${val}" is not a number.`); return;
-      }
-      sym.data[measureCols[j]].push(num);
+      // Treat nan/missing values as 0 — Lambda output files may contain nan for edge cases
+      sym.data[measureCols[j]].push(isNaN(num) ? 0 : num);
     }
   }
 
@@ -365,11 +394,16 @@ function parseCSV(text, filename) {
     measureCols.forEach(c => { sym.data[c] = order.map(i => sym.data[c][i]); });
   });
 
-  // Validate minimum timestamps per symbol
+  // Warn if below recommended minimum — do not reject
   const symbols = [...pivot.keys()];
   const minCount = Math.min(...symbols.map(s => pivot.get(s).dates.length));
-  if (minCount < 100) {
-    showUploadError(`Insufficient data: ${minCount} timestamps found. A minimum of 100 is required.`); return;
+  const minSymbol = symbols.find(s => pivot.get(s).dates.length === minCount) || symbols[0];
+  if (minCount < 50) {
+    const el = document.getElementById('uploadError');
+    if (el) {
+      el.textContent = `ℹ ${minCount} timestamps for ${minSymbol} — fewer than the recommended 50.`;
+      el.classList.add('show');
+    }
   }
 
   currentJob.csvData = {
@@ -392,15 +426,17 @@ function showUploadError(msg) {
   if (el) { el.textContent = msg; el.classList.add('show'); }
 }
 
-// Build dropdown options — merges p+/p- → "probabilities", therm_p+/therm_p- → "thermal probabilities", T+FE → "free_energy & temperature"
-function buildMeasureOptions(measureCols, activeCol) {
-  const hasPair      = measureCols.includes('p+')       && measureCols.includes('p-');
-  const hasThermPair = measureCols.includes('therm_p+') && measureCols.includes('therm_p-');
-  const hasFeT       = measureCols.includes('FE')       && measureCols.includes('T');
+// Build dropdown options — merges p+/p- → "probabilities", therm_p+/therm_p- → "thermal probabilities", T+FE → "free_energy & temperature", resistance+noise → "resistance & noise"
+function buildMeasureOptions(measureCols, activeCol, sourceFile) {
+  const hasPair      = measureCols.includes('p+')         && measureCols.includes('p-');
+  const hasThermPair = measureCols.includes('therm_p+')   && measureCols.includes('therm_p-');
+  const hasFeT       = measureCols.includes('FE')         && measureCols.includes('T');
+  const hasResNoise  = measureCols.includes('resistance') && measureCols.includes('noise');
   const skip = new Set([
-    ...(hasPair      ? ['p+',      'p-']       : []),
-    ...(hasThermPair ? ['therm_p+','therm_p-'] : []),
-    ...(hasFeT       ? ['FE',      'T']        : []),
+    ...(hasPair      ? ['p+',         'p-']          : []),
+    ...(hasThermPair ? ['therm_p+',   'therm_p-']    : []),
+    ...(hasFeT       ? ['FE',         'T']            : []),
+    ...(hasResNoise  ? ['resistance', 'noise']        : []),
   ]);
 
   // Paired synthetic entries
@@ -408,23 +444,38 @@ function buildMeasureOptions(measureCols, activeCol) {
     'probabilities':             { show: hasPair,      val: 'probabilities' },
     'free_energy & temperature': { show: hasFeT,       val: 'free_energy & temperature' },
     'thermal probabilities':     { show: hasThermPair, val: 'thermal probabilities' },
+    'resistance & noise':        { show: hasResNoise,  val: 'resistance & noise' },
   };
+
+  // Display name remapping for units columns
+  const COL_DISPLAY = {
+    'momentum':        'momentum',
+    'energy':          'energy',
+    'free energy':     'free energy',
+    'free entropy':    'free entropy',
+    'temperature':     'temperature',
+    'expected demand': 'expected demand',
+    'expected E':      'expected E',
+    'delta demand':    'delta demand',
+  };
+  function colLabel(name) { return COL_DISPLAY[name] || name; }
+
+  // Columns suppressed from dropdown for units files
+  const UNITS_SUPPRESS = new Set(['free energy', 'free entropy', 'temperature']);
 
   // Explicit display order
   const ORDER = [
     'value',
     // Binary
-    'probabilities', 'energy', 'power', 'resistance', 'noise',
+    'probabilities', 'energy', 'power', 'resistance & noise', 'resistance', 'noise',
     'free_energy & temperature', 'thermal probabilities',
-    // Units
-    'p', 'E', 'T', 'T_B',
-    'exp_n', 'exp_strain', 'exp_demand',
-    'sus_n', 'sus_strain', 'sus_E', 'sus_demand',
-    'var_n', 'var_strain', 'var_E', 'var_del_n', 'cov_n_strain',
+    // Units (new format)
+    'momentum', 'energy', 'expected demand', 'delta demand', 'expected E',
   ];
 
   const opts = [];
   const seen = new Set();
+  const isUnits = (sourceFile || '').toLowerCase().includes('_units_');
 
   // First pass: ordered entries
   for (const name of ORDER) {
@@ -435,13 +486,14 @@ function buildMeasureOptions(measureCols, activeCol) {
       seen.add(name); seen.add(val);
     } else {
       if (!measureCols.includes(name) || skip.has(name) || seen.has(name)) continue;
-      opts.push(`<option value="${escHtml(name)}" ${activeCol === name ? 'selected' : ''}>${escHtml(name)}</option>`);
+      if (isUnits && UNITS_SUPPRESS.has(name)) { seen.add(name); continue; }
+      opts.push(`<option value="${escHtml(name)}" ${activeCol === name ? 'selected' : ''}>${escHtml(colLabel(name))}</option>`);
       seen.add(name);
     }
   }
 
-  // Second pass: any remaining columns not in ORDER
-  measureCols.filter(c => !skip.has(c) && !seen.has(c)).forEach(c => {
+  // Second pass: any remaining columns not in ORDER (suppress hidden units cols)
+  measureCols.filter(c => !skip.has(c) && !seen.has(c) && !(isUnits && UNITS_SUPPRESS.has(c))).forEach(c => {
     opts.push(`<option value="${escHtml(c)}" ${activeCol === c ? 'selected' : ''}>${escHtml(c)}</option>`);
   });
 
@@ -454,19 +506,20 @@ function renderPlot() {
 
   const symData = csv.pivot[activeSymbol];
   const fullLen = symData.dates.length;
-  const splitAt = Math.ceil(fullLen / 2);
+  const splitAt = Math.ceil(fullLen / 3);
   const dates   = symData.dates.slice(splitAt);
 
-  const warnBanner = fullLen <= 110
-    ? `<div style="background:rgba(255,179,71,0.1);border:1px solid rgba(255,179,71,0.3);border-radius:6px;padding:8px 14px;font-size:12px;color:var(--amber);margin-bottom:14px;">
-        ⚠ ${fullLen} timestamps for <strong>${escHtml(activeSymbol)}</strong> — recommended minimum is 110 for reliable results.
+  const warnBanner = fullLen < 50
+    ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;padding:4px 0;">
+        ℹ ${fullLen} timestamps — fewer than the recommended 50.
       </div>`
     : '';
 
   // Build series — probabilities and thermal probabilities each show their pair together
-  const isPaired      = activeCol === 'probabilities'       && csv.measureCols.includes('p+')       && csv.measureCols.includes('p-');
-  const isThermPaired = activeCol === 'thermal probabilities' && csv.measureCols.includes('therm_p+') && csv.measureCols.includes('therm_p-');
-  const isFeT         = activeCol === 'free_energy & temperature'      && csv.measureCols.includes('FE')       && csv.measureCols.includes('T');
+  const isPaired      = activeCol === 'probabilities'           && csv.measureCols.includes('p+')         && csv.measureCols.includes('p-');
+  const isThermPaired = activeCol === 'thermal probabilities'   && csv.measureCols.includes('therm_p+')   && csv.measureCols.includes('therm_p-');
+  const isFeT         = activeCol === 'free_energy & temperature' && csv.measureCols.includes('FE')       && csv.measureCols.includes('T');
+  const isResNoise    = activeCol === 'resistance & noise'      && csv.measureCols.includes('resistance') && csv.measureCols.includes('noise');
   const anyPaired = isPaired || isThermPaired;
 
   const series = isPaired
@@ -481,8 +534,13 @@ function renderPlot() {
       ]
     : isFeT
     ? [
-        { col: 'T',  values: (symData.data['T']  || []).slice(splitAt), color: '#ff4d6a', label: 'T',  axis: 'left'  },
-        { col: 'FE', values: (symData.data['FE'] || []).slice(splitAt), color: '#2e7eff', label: 'FE', axis: 'right' },
+        { col: 'T',  values: (symData.data['T']  || []).slice(splitAt), color: '#ff4d6a', label: 'T',          axis: 'left'  },
+        { col: 'FE', values: (symData.data['FE'] || []).slice(splitAt), color: '#2e7eff', label: 'FE',         axis: 'right' },
+      ]
+    : isResNoise
+    ? [
+        { col: 'resistance', values: (symData.data['resistance'] || []).slice(splitAt), color: '#ffb347', label: 'resistance', axis: 'left'  },
+        { col: 'noise',      values: (symData.data['noise']      || []).slice(splitAt), color: '#5b9fff', label: 'noise',      axis: 'right' },
       ]
     : [
         { col: activeCol, values: (symData.data[activeCol] || []).slice(splitAt), color: '#2e7eff', label: activeCol },
@@ -498,15 +556,15 @@ function renderPlot() {
   const change = last - primary[0];
 
   // Legend for paired mode
-  const pairedLabel = isPaired ? 'probabilities' : isThermPaired ? 'thermal probabilities' : isFeT ? 'free_energy & temperature' : activeCol;
+  const pairedLabel = isPaired ? 'probabilities' : isThermPaired ? 'thermal probabilities' : isFeT ? 'free_energy & temperature' : isResNoise ? 'resistance & noise' : activeCol;
 
-  const legendHtml = (anyPaired || isFeT) ? `
+  const legendHtml = (anyPaired || isFeT || isResNoise) ? `
     <div style="display:flex;gap:14px;align-items:center;margin-top:6px;">
       <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:${series[0].color};">
-        <span style="width:20px;height:2px;background:${series[0].color};display:inline-block;border-radius:2px;"></span>${series[0].label}${isFeT ? ' (left)' : ''}
+        <span style="width:20px;height:2px;background:${series[0].color};display:inline-block;border-radius:2px;"></span>${series[0].label}${(isFeT || isResNoise) ? ' (left)' : ''}
       </span>
       <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:${series[1].color};">
-        <span style="width:20px;height:2px;background:${series[1].color};display:inline-block;border-radius:2px;"></span>${series[1].label}${isFeT ? ' (right)' : ''}
+        <span style="width:20px;height:2px;background:${series[1].color};display:inline-block;border-radius:2px;"></span>${series[1].label}${(isFeT || isResNoise) ? ' (right)' : ''}
       </span>
     </div>` : '';
 
@@ -525,14 +583,14 @@ function renderPlot() {
         <div class="control-label">Measurement</div>
         <div class="select-wrap">
           <select id="colSelect" onchange="changeCol(this.value)">
-            ${buildMeasureOptions(csv.measureCols, activeCol)}
+            ${buildMeasureOptions(csv.measureCols, activeCol, csv.sourceFile)}
           </select>
         </div>
       </div>
-      <button class="btn-reupload" onclick="reupload()">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-        Replace CSV
-      </button>
+      <a class="btn-reupload" href="https://fides-ratio.com/decision-machine/data-dictionary.html" target="_blank" rel="noopener">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s4.332.477 5.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+        Data Dictionary
+      </a>
     </div>
 
     ${warnBanner}
@@ -542,7 +600,7 @@ function renderPlot() {
       <div class="chart-header">
         <div>
           <div class="chart-title">${escHtml(activeSymbol)} — ${pairedLabel}</div>
-          <div class="chart-meta">${escHtml(csv.sourceFile)} · ${dates[0]} → ${dates[dates.length-1]} · ${dates.length} points (second half of ${fullLen})</div>
+          <div class="chart-meta">${escHtml(csv.sourceFile)} · ${dates[0]} → ${dates[dates.length-1]} · ${dates.length} points (last two thirds of ${fullLen})</div>
           ${legendHtml}
         </div>
       </div>
@@ -552,29 +610,29 @@ function renderPlot() {
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-card-label">Latest${(anyPaired || isFeT) ? ` (${series[0].label})` : ''}</div>
+        <div class="stat-card-label">Latest${(anyPaired || isFeT || isResNoise) ? ` (${series[0].label})` : ''}</div>
         <div class="stat-card-value">${fmt(last)}</div>
         <div class="stat-card-sub">${dates[dates.length-1]}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label">Average${(anyPaired || isFeT) ? ` (${series[0].label})` : ''}</div>
+        <div class="stat-card-label">Average${(anyPaired || isFeT || isResNoise) ? ` (${series[0].label})` : ''}</div>
         <div class="stat-card-value">${fmt(avg)}</div>
-        <div class="stat-card-sub">second half</div>
+        <div class="stat-card-sub">last two thirds</div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label">Change${(anyPaired || isFeT) ? ` (${series[0].label})` : ''}</div>
+        <div class="stat-card-label">Change${(anyPaired || isFeT || isResNoise) ? ` (${series[0].label})` : ''}</div>
         <div class="stat-card-value" style="color:${change>=0?'var(--green)':'var(--red)'}">${change>=0?'+':''}${fmt(change)}</div>
         <div class="stat-card-sub">over period</div>
       </div>
       <div class="stat-card">
         <div class="stat-card-label">Min</div>
         <div class="stat-card-value">${fmt(min)}</div>
-        <div class="stat-card-sub">${(anyPaired || isFeT) ? 'both curves' : 'lowest value'}</div>
+        <div class="stat-card-sub">${(anyPaired || isFeT || isResNoise) ? 'both curves' : 'lowest value'}</div>
       </div>
       <div class="stat-card">
         <div class="stat-card-label">Max</div>
         <div class="stat-card-value">${fmt(max)}</div>
-        <div class="stat-card-sub">${(anyPaired || isFeT) ? 'both curves' : 'highest value'}</div>
+        <div class="stat-card-sub">${(anyPaired || isFeT || isResNoise) ? 'both curves' : 'highest value'}</div>
       </div>
       <div class="stat-card">
         <div class="stat-card-label">Length</div>
@@ -587,7 +645,7 @@ function renderPlot() {
     <div class="table-card">
       <div class="table-header">
         <h3>${escHtml(activeSymbol)} · ${pairedLabel}</h3>
-        <span>${dates.length} rows (second half) · ${escHtml(csv.sourceFile)}</span>
+        <span>${dates.length} rows (last two thirds) · ${escHtml(csv.sourceFile)}</span>
       </div>
       <div class="table-wrap">
         <table>
@@ -620,7 +678,6 @@ function reupload() {
   currentJob.csvData = null;
   renderUpload();
 }
-
 // ── CHART ─────────────────────────────────────────────
 // series: [{ values, color, label }]
 function drawChart(dates, series) {
@@ -634,7 +691,7 @@ function drawChart(dates, series) {
   const W = container.offsetWidth, H = container.offsetHeight;
 
   const isDual = series.some(s => s.axis);
-  const PAD = { top: 32, right: isDual ? 80 : 24, bottom: 60, left: 80 };
+  const PAD = { top: 32, right: isDual ? 80 : 24, bottom: 60, left: 88 };
   const cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
   const n  = dates.length;
 
@@ -694,14 +751,38 @@ function drawChart(dates, series) {
   const xTicks = Math.min(8, n);
   for (let i = 0; i < xTicks; i++) {
     const idx = Math.round((i / (xTicks - 1)) * (n - 1));
-    ctx.fillText(dates[idx].slice(5), xPos(idx), H - PAD.bottom + 18);
+    ctx.fillText(dates[idx].slice(0,7), xPos(idx), H - PAD.bottom + 18);
   }
 
-  // 0.5 reference line (single-axis only, when in range)
-  if (!isDual && leftScale.yMin <= 0.5 && leftScale.yMax >= 0.5) {
+  // 0.5 reference line — single-axis and dual-curve (probabilities, thermal probabilities)
+  const isProbPair = !isDual && series.length === 2 &&
+    (activeCol === 'probabilities' || activeCol === 'thermal probabilities');
+  if ((!isDual && series.length === 1 && leftScale.yMin <= 0.5 && leftScale.yMax >= 0.5) || isProbPair) {
     const ry = leftScale.yPos(0.5);
+    const isProb = activeCol === 'probabilities' || activeCol === 'thermal probabilities';
     ctx.save();
-    ctx.beginPath(); ctx.strokeStyle = 'rgba(200,200,200,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([5,5]);
+    ctx.beginPath();
+    ctx.strokeStyle = isProb ? 'rgba(200,200,200,0.8)' : 'rgba(200,200,200,0.35)';
+    ctx.lineWidth   = isProb ? 1.5 : 1;
+    ctx.setLineDash([5,5]);
+    ctx.moveTo(PAD.left, ry); ctx.lineTo(PAD.left + cW, ry);
+    ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  }
+
+  // E=0 reference line — energy plot (Binary), single-axis, brighter
+  if (!isDual && activeCol === 'energy') {
+    const ry = leftScale.yPos(0);
+    ctx.save();
+    ctx.beginPath(); ctx.strokeStyle = 'rgba(255,77,106,0.9)'; ctx.lineWidth = 1.5; ctx.setLineDash([5,5]);
+    ctx.moveTo(PAD.left, ry); ctx.lineTo(PAD.left + cW, ry);
+    ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  }
+
+  // P=0 reference line — power plot (Binary), single-axis
+  if (!isDual && activeCol === 'power') {
+    const ry = leftScale.yPos(0);
+    ctx.save();
+    ctx.beginPath(); ctx.strokeStyle = 'rgba(255,77,106,0.9)'; ctx.lineWidth = 1.5; ctx.setLineDash([5,5]);
     ctx.moveTo(PAD.left, ry); ctx.lineTo(PAD.left + cW, ry);
     ctx.stroke(); ctx.setLineDash([]); ctx.restore();
   }
@@ -736,6 +817,8 @@ function drawChart(dates, series) {
       ctx.strokeStyle = '#06090f'; ctx.lineWidth = 2; ctx.stroke();
     });
   });
+
+
 
   // Hover
   const tooltip = document.getElementById('chartTooltip');
@@ -783,19 +866,23 @@ function fmt(n) {
   return n.toFixed(2).replace(/\.?0+$/,'');
 }
 function fmtDp(n, dp) {
-  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, {maximumFractionDigits: Math.min(dp,1)});
+  if (n === 0) return '0';
+  const abs = Math.abs(n);
+  if (abs > 0 && abs < 0.001) return n.toExponential(3);
+  if (abs >= 1000) return n.toLocaleString(undefined, {maximumFractionDigits: Math.min(dp,1)});
   return n.toFixed(dp);
 }
-// Detect max decimal places in an array of values, capped at 4
+// Detect max decimal places in an array of values
 function detectPrecision(valArrays) {
   let max = 0;
-  for (const vals of valArrays) {
-    for (const v of vals) {
-      const s = v.toString();
-      const dot = s.indexOf('.');
-      if (dot >= 0) max = Math.max(max, Math.min(s.length - dot - 1, 4));
-      if (max === 4) return 4;
-    }
+  let allVals = valArrays.flat();
+  const nonZero = allVals.filter(v => v !== 0);
+  if (nonZero.length > 0 && nonZero.every(v => Math.abs(v) < 0.001)) return 4;
+  for (const v of allVals) {
+    const s = String(v);
+    const dot = s.indexOf('.');
+    if (dot >= 0) max = Math.max(max, Math.min(s.length - dot - 1, 6));
+    if (max === 6) return 6;
   }
   return max;
 }
@@ -813,8 +900,7 @@ function showError(msg) {
 
 // ── CUSTOMER BADGE ─────────────────────────────────────
 function loadCustomerBadge() {
-  const id = localStorage.getItem('sml_customer_id');
-  if (id) { document.getElementById('customerIdLabel').textContent = id; document.getElementById('customerIdBadge').style.display = 'flex'; }
+  // Badge is now populated by init() via /api/config
 }
 
 // ── THEME ─────────────────────────────────────────────
@@ -836,11 +922,12 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => {
     if (currentJob?.csvData && activeCol && activeSymbol) {
       const sym     = currentJob.csvData.pivot[activeSymbol];
-      const splitAt = Math.ceil(sym.dates.length / 2);
+      const splitAt = Math.ceil(sym.dates.length / 3);
       const dates   = sym.dates.slice(splitAt);
-      const isPaired      = activeCol === 'probabilities'       && currentJob.csvData.measureCols.includes('p+')       && currentJob.csvData.measureCols.includes('p-');
-      const isThermPaired = activeCol === 'thermal probabilities' && currentJob.csvData.measureCols.includes('therm_p+') && currentJob.csvData.measureCols.includes('therm_p-');
-      const isFeT         = activeCol === 'free_energy & temperature'      && currentJob.csvData.measureCols.includes('FE')       && currentJob.csvData.measureCols.includes('T');
+      const isPaired      = activeCol === 'probabilities'           && currentJob.csvData.measureCols.includes('p+')         && currentJob.csvData.measureCols.includes('p-');
+      const isThermPaired = activeCol === 'thermal probabilities'   && currentJob.csvData.measureCols.includes('therm_p+')   && currentJob.csvData.measureCols.includes('therm_p-');
+      const isFeT         = activeCol === 'free_energy & temperature' && currentJob.csvData.measureCols.includes('FE')       && currentJob.csvData.measureCols.includes('T');
+      const isResNoise    = activeCol === 'resistance & noise'      && currentJob.csvData.measureCols.includes('resistance') && currentJob.csvData.measureCols.includes('noise');
       const series = isPaired
         ? [
             { col: 'p+',       values: sym.data['p+'].slice(splitAt),       color: '#2de8a0', label: 'p+' },
@@ -853,8 +940,13 @@ window.addEventListener('resize', () => {
           ]
         : isFeT
         ? [
-            { col: 'T',  values: sym.data['T'].slice(splitAt),  color: '#ff4d6a', label: 'T',  axis: 'left'  },
-            { col: 'FE', values: sym.data['FE'].slice(splitAt), color: '#2e7eff', label: 'FE', axis: 'right' },
+            { col: 'T',  values: sym.data['T'].slice(splitAt),  color: '#ff4d6a', label: 'T',          axis: 'left'  },
+            { col: 'FE', values: sym.data['FE'].slice(splitAt), color: '#2e7eff', label: 'FE',         axis: 'right' },
+          ]
+        : isResNoise
+        ? [
+            { col: 'resistance', values: sym.data['resistance'].slice(splitAt), color: '#ffb347', label: 'resistance', axis: 'left'  },
+            { col: 'noise',      values: sym.data['noise'].slice(splitAt),      color: '#5b9fff', label: 'noise',      axis: 'right' },
           ]
         : [{ col: activeCol, values: sym.data[activeCol].slice(splitAt), color: '#2e7eff', label: activeCol }];
       drawChart(dates, series);

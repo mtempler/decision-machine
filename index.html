@@ -255,6 +255,13 @@
   }
   .series-row:hover .btn-sml { opacity: 1; }
   .btn-sml:hover { background: rgba(255,179,71,0.18); border-color: var(--amber); }
+  .btn-sml-disabled {
+    cursor: default; opacity: 0;
+    border-color: rgba(138,154,181,0.25); background: rgba(138,154,181,0.05);
+    color: var(--text-faint);
+  }
+  .btn-sml-disabled:hover { background: rgba(138,154,181,0.05); border-color: rgba(138,154,181,0.25); }
+  .series-row:hover .btn-sml-disabled { opacity: 0.6; }
   .upload-area {
     border: 1px dashed var(--border); border-radius: 6px; padding: 7px 10px;
     display: flex; align-items: center; gap: 7px; cursor: pointer;
@@ -517,32 +524,6 @@
   .spinner { width: 26px; height: 26px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Auth warning banner — persistent, appears below header when AssumeRole/Cognito auth is failing */
-  .auth-banner {
-    display: none;
-    align-items: center; gap: 10px;
-    background: rgba(255,77,106,0.1); border-bottom: 1px solid var(--red);
-    color: var(--red); font-size: 13px; padding: 10px 32px;
-  }
-  .auth-banner.show { display: flex; }
-  .auth-banner svg { width: 15px; height: 15px; flex-shrink: 0; }
-  .auth-banner-text { flex: 1; }
-  .auth-banner-detail { color: var(--text-dim); font-size: 12px; margin-top: 1px; }
-  .auth-banner-pw-form { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
-  .auth-banner-pw-form input {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
-    color: var(--text); font-size: 13px; padding: 6px 10px; outline: none;
-    font-family: 'DM Sans', sans-serif; width: 200px;
-  }
-  .auth-banner-pw-form input:focus { border-color: var(--red); }
-  .auth-banner-btn {
-    background: transparent; border: 1px solid var(--red); color: var(--red);
-    border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500;
-    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s;
-  }
-  .auth-banner-btn:hover:not(:disabled) { background: rgba(255,77,106,0.12); }
-  .auth-banner-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
   @media (max-width: 960px) {
     header { padding: 0 16px; }
     main { padding: 18px 14px 60px; }
@@ -565,10 +546,10 @@
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
         <span id="customerIdLabel">—</span>
       </div>
-      <button class="tsu-badge" id="tsuBadge" title="Request TSUs" onclick="openTsuModal()">
+      <div class="tsu-badge unfunded" id="tsuBadge" title="TSUs not available in training mode">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
         <span id="tsuBalanceLabel">TSU: —</span>
-      </button>
+      </div>
       <button class="icon-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">
         <span id="themeIcon"></span>
       </button>
@@ -579,27 +560,6 @@
     </div>
   </div>
 </header>
-
-<div class="auth-banner" id="authBanner">
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-8.99 3.75h.008v.008h-.008v-.008z"/></svg>
-  <div style="flex:1;">
-    <div class="auth-banner-text">Your Cognito password needs to be reset before AWS features work again — this can happen after an account-wide security reset.</div>
-    <div class="auth-banner-pw-form">
-      <input type="password" id="authNewPassword" placeholder="New password" autocomplete="new-password">
-      <input type="password" id="authNewPasswordConfirm" placeholder="Confirm new password" autocomplete="new-password">
-      <button class="auth-banner-btn" id="authChangePwBtn" onclick="submitPasswordChange()">Set new password</button>
-    </div>
-    <div class="auth-banner-detail" id="authBannerPwError"></div>
-  </div>
-</div>
-
-<div class="auth-banner" id="custidBanner">
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-8.99 3.75h.008v.008h-.008v-.008z"/></svg>
-  <div style="flex:1;">
-    <div class="auth-banner-text">This app's configured customer ID doesn't match your Cognito account. Job submissions are blocked until this is fixed.</div>
-    <div class="auth-banner-detail" id="custidBannerDetail"></div>
-  </div>
-</div>
 
 <main>
   <div class="stats-bar" id="statsBar"></div>
@@ -769,88 +729,8 @@
     <!-- Error -->
     <div class="error-msg" id="smlError"></div>
 
-    <!-- TSU cost summary -->
-    <div id="smlTsuSummary" style="display:none;margin-bottom:14px;">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;font-family:'DM Mono',monospace;">
-        <span style="color:var(--text-faint);">Cost</span>
-        <span id="smlTsuCost" style="color:var(--text);margin:0 6px;font-weight:600;">—</span>
-        <span style="color:var(--text-faint);">TSUs &nbsp;·&nbsp; Balance</span>
-        <span id="smlTsuBalance" style="color:var(--text);margin:0 6px;font-weight:600;">—</span>
-        <span style="color:var(--text-faint);">→ After</span>
-        <span id="smlTsuAfter" style="margin-left:6px;font-weight:600;">—</span>
-      </div>
-    </div>
-
-    <!-- TSU request section (shown when balance is zero) -->
-    <div id="smlTsuRequest" style="display:none;margin-bottom:14px;">
-      <div style="background:rgba(255,179,71,0.08);border:1px solid rgba(255,179,71,0.3);border-radius:var(--radius-sm);padding:12px 14px;">
-        <div style="font-size:12px;color:var(--amber);font-weight:600;margin-bottom:10px;">
-          ⚡ No TSUs available — request more to submit jobs
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="flex:1;">
-            <label class="form-label" style="margin-bottom:5px;">Quantity</label>
-            <input class="form-input" id="smlTsuQuantity" type="number" min="1" value="500"
-              style="font-family:'DM Mono',monospace;max-width:120px;">
-          </div>
-          <div style="font-size:11px;color:var(--text-faint);flex:2;padding-top:18px;">
-            An invoice will be sent to <span id="smlTsuEmail" style="color:var(--text-dim);"></span>
-          </div>
-        </div>
-        <div class="success-msg" id="smlTsuRequestSuccess" style="margin-top:10px;"></div>
-        <div class="error-msg"   id="smlTsuRequestError"   style="margin-top:10px;"></div>
-      </div>
-    </div>
-
     <div class="form-actions">
       <button class="btn-secondary" onclick="closeModal('smlModal')">Cancel</button>
-      <button id="smlRequestTsuBtn" onclick="submitTsuRequest()"
-        style="display:none;align-items:center;gap:6px;background:var(--amber);color:#111;border:none;border-radius:var(--radius-sm);padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        Request TSUs
-      </button>
-      <button id="smlSubmitBtn" onclick="submitSmlJob()" style="display:flex;align-items:center;gap:6px;background:var(--amber);color:#111;border:none;border-radius:var(--radius-sm);padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.2s;" onmouseover="this.style.background='#ffc55a'" onmouseout="this.style.background='var(--amber)'">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        Submit Job
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- TSU Request Modal -->
-<div class="modal-overlay" id="tsuModal">
-  <div class="modal" style="max-width:440px;">
-    <button class="modal-close" onclick="closeModal('tsuModal')">✕</button>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-      <div style="width:30px;height:30px;border-radius:8px;background:rgba(255,179,71,0.12);border:1px solid rgba(255,179,71,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <svg fill="none" stroke="var(--amber)" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-      </div>
-      <h2 style="margin:0;">Request TSUs</h2>
-    </div>
-    <p style="font-size:13px;color:var(--text-dim);line-height:1.6;margin-bottom:20px;padding-left:40px;">
-      One TSU processes one time-series with fewer than 250 timestamps. Each TSU costs <strong>$0.10 USD</strong>. An invoice will be sent to your registered email.
-    </p>
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;margin-bottom:18px;">
-      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint);margin-bottom:4px;">Current Balance</div>
-      <div id="tsuModalBalance" style="font-family:'DM Mono',monospace;font-size:16px;font-weight:600;color:var(--text);">—</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Quantity *</label>
-      <input class="form-input" id="tsuModalQuantity" type="number" min="1" value="500"
-        style="font-family:'DM Mono',monospace;">
-    </div>
-    <div style="font-size:12px;color:var(--text-faint);margin-bottom:18px;">
-      Invoice will be sent to <span id="tsuModalEmail" style="color:var(--text-dim);font-family:'DM Mono',monospace;"></span>
-    </div>
-    <div class="success-msg" id="tsuModalSuccess"></div>
-    <div class="error-msg"   id="tsuModalError"></div>
-    <div class="form-actions">
-      <button class="btn-secondary" onclick="closeModal('tsuModal')">Cancel</button>
-      <button id="tsuModalSubmitBtn" onclick="submitTsuModalRequest()"
-        style="display:flex;align-items:center;gap:6px;background:var(--amber);color:#111;border:none;border-radius:var(--radius-sm);padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.2s;" onmouseover="this.style.background='#ffc55a'" onmouseout="this.style.background='var(--amber)'">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        Request TSUs
-      </button>
     </div>
   </div>
 </div>
@@ -1011,7 +891,6 @@ function renderParallelGrid() {
           <div class="job-file-name">${escHtml(f.descriptor || f.filename)}</div>
           <div class="job-file-desc">${escHtml(f.filename)} · ${date}</div>
         </div>
-        <button class="job-file-del" onclick="event.stopPropagation();deleteJobFile('${escHtml(f.filename)}')" title="Delete">${delSvg}</button>
         <div class="job-file-arrow">${arrowSvg}</div>
       </div>`;
   }
@@ -1025,8 +904,6 @@ function renderParallelGrid() {
           <div class="job-file-name">${escHtml(f.descriptor || f.filename)}</div>
           <div class="job-file-desc">${escHtml(f.filename)} · ${date}</div>
         </div>
-        <button class="btn-restore" onclick="deleteArchivedFile('${escHtml(f.filename)}')" title="Delete" style="color:var(--text-faint);">${delSvg}</button>
-        <button class="btn-restore" onclick="restoreJobFile('${escHtml(f.filename)}')" title="Restore">${restoreSvg}</button>
       </div>`;
   }
 
@@ -1049,22 +926,12 @@ function renderParallelGrid() {
         </div>
       </div>` : '';
 
-    const footer = files.length > 0 ? `
-      <div class="job-card-footer">
-        <span style="font-size:10px;color:var(--text-faint);">${files.length} file${files.length > 1 ? 's' : ''}</span>
-        <button class="btn-archive" onclick="archiveAll('${slug}','${cellClass}')">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="9" height="9"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v.01a2 2 0 01-2 2M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/></svg>
-          Archive all
-        </button>
-      </div>` : '';
-
     return `
       <div class="prow-cell ${cellClass}">
         <div class="job-card">
           <div class="job-file-list">
             ${files.map(f => jobFileRowHtml(f, navBase)).join('')}
           </div>
-          ${footer}
           ${archiveToggle}
         </div>
       </div>`;
@@ -1075,8 +942,8 @@ function renderParallelGrid() {
     const slug = v.slug || '';
     html += `<div class="parallel-row">`;
     html += `<div class="prow-cell cell-views">${renderCardInner(v)}</div>`;
-    html += jobCellHtml(slug, smlBySlug,  smlArchivedBySlug,  '/job-plot.html',   'cell-sml',  'No SML outputs yet');
-    html += jobCellHtml(slug, pdfsBySlug, pdfsArchivedBySlug, '/pdfs-table.html', 'cell-pdfs', 'No DM outputs yet');
+    html += jobCellHtml(slug, smlBySlug,  smlArchivedBySlug,  '/job-plot.html', 'cell-sml',  'No SML outputs yet');
+    html += jobCellHtml(slug, pdfsBySlug, pdfsArchivedBySlug, '/dm-plot.html',  'cell-pdfs', 'No DM outputs yet');
     html += `</div>`;
   });
 
@@ -1136,49 +1003,6 @@ async function deleteErrorFile(filename) {
   } catch(e) { showToast('Delete failed: ' + e.message, 'error'); }
 }
 
-async function deleteJobFile(filename) {
-  try {
-    const res = await fetch('/api/jobfiles/' + encodeURIComponent(filename) + '/delete', { method: 'POST' });
-    if (!res.ok) throw new Error(await res.text());
-    jobfiles = jobfiles.filter(f => f.filename !== filename);
-    renderAll();
-    showToast('File deleted');
-  } catch(e) { showToast('Delete failed: ' + e.message, 'error'); }
-}
-
-async function archiveAll(slug, cellClass) {
-  const ispdfs   = cellClass === 'cell-pdfs';
-  const toArchive = jobfiles.filter(f => f.slug === slug && (ispdfs ? f.is_pdfs : f.is_sml));
-  if (toArchive.length === 0) return;
-  try {
-    const res = await fetch('/api/jobfiles/archive-all', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filenames: toArchive.map(f => f.filename) })
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const archived = toArchive.map(f => ({ ...f }));
-    jobfiles      = jobfiles.filter(f => !toArchive.find(a => a.filename === f.filename));
-    archivedfiles = [...archived, ...archivedfiles];
-    renderAll();
-    showToast(`${toArchive.length} file${toArchive.length > 1 ? 's' : ''} archived`);
-  } catch(e) { showToast('Archive failed: ' + e.message, 'error'); }
-}
-
-async function restoreJobFile(filename) {
-  try {
-    const res = await fetch('/api/archivedfiles/' + encodeURIComponent(filename) + '/restore', { method: 'POST' });
-    if (!res.ok) throw new Error(await res.text());
-    const f = archivedfiles.find(f => f.filename === filename);
-    if (f) {
-      archivedfiles = archivedfiles.filter(a => a.filename !== filename);
-      jobfiles = [f, ...jobfiles];
-    }
-    renderAll();
-    showToast('File restored');
-  } catch(e) { showToast('Restore failed: ' + e.message, 'error'); }
-}
-
 function toggleArchivePanel(uid) {
   const panel   = document.getElementById('apanel-' + uid);
   const toggle  = document.getElementById('atoggle-' + uid);
@@ -1214,10 +1038,10 @@ function renderCardInner(v) {
       </div>
       <div class="series-actions">
         <span style="font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace;">${s.length}pts</span>
-        <button class="btn-sml" onclick="event.stopPropagation();openSmlModal('${v.id}','${s.id}')" title="Submit SML job">
+        <div class="btn-sml btn-sml-disabled" title="No processing engine — upload your data in SML-App to run jobs">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="8" height="8"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
           SML
-        </button>
+        </div>
         <span class="series-arrow">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="10" height="10"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
         </span>
@@ -1294,130 +1118,6 @@ function renderCsvTable(text) {
     </div>
     <div class="csv-table-info">${dataRows.length} rows · ${headers.length} columns</div>
   `;
-}
-
-// ── SML JOB MODAL ──────────────────────────────────────
-async function openSmlModal(viewId, seriesId) {
-  smlViewId   = viewId;
-  smlSeriesId = seriesId;
-  const v = views.find(v => v.id === viewId);
-  const s = v && v.series.find(s => s.id === seriesId);
-  if (!s) return;
-
-  // Gate on Cognito readiness right here — this is the one action that actually
-  // needs AWS. A pre-built config (build.bat) can have every identity field set
-  // but no matching local OS-keychain entry yet, since only the setup wizard
-  // writes one. Rather than open a modal whose submit will just fail, send the
-  // customer to setup first. /api/auth/status does a real get_boto_session()
-  // check, so this also catches an expired/wrong stored password, not just an
-  // empty keychain.
-  try {
-    const statusRes  = await fetch('/api/auth/status');
-    const statusData = await statusRes.json();
-    if (!statusData.ok && !statusData.password_change_required) {
-      window.location.href = '/setup.html';
-      return;
-    }
-  } catch (err) {
-    // Can't reach the server at all — let the modal open anyway; its own
-    // submit call will surface a clearer error than blocking silently here.
-  }
-
-  // Series display
-  document.getElementById('smlSeriesDisplay').textContent = s.name;
-
-  // Measurements locked from series headers (skip date col 0)
-  const headers = (s.headers || []).slice(1);
-  document.getElementById('smlMeasurements').textContent = headers.join(', ') || '—';
-
-  // Reset process selection
-  document.getElementById('smlProcessBinary').checked = false;
-  document.getElementById('smlProcessUnits').checked  = false;
-  document.getElementById('smlError').classList.remove('show');
-
-  // TSU cost = number of symbols
-  updateSmlTsuDisplay(headers.length);
-
-  updateSmlPreview();
-  openModal('smlModal');
-}
-
-function getSelectedProcess() {
-  if (document.getElementById('smlProcessBinary').checked) return 'binary';
-  if (document.getElementById('smlProcessUnits').checked)  return 'units';
-  return '';
-}
-
-function updateSmlPreview() {
-  const v = views.find(v => v.id === smlViewId);
-  const s = v && v.series.find(s => s.id === smlSeriesId);
-  const descriptor = s ? s.name.replace(/\.csv$/i, '') : '';
-  const process    = getSelectedProcess();
-
-  // Highlight selected process label
-  document.getElementById('processBinaryLabel').style.borderColor =
-    process === 'binary' ? 'var(--amber)' : '';
-  document.getElementById('processUnitsLabel').style.borderColor  =
-    process === 'units'  ? 'var(--amber)' : '';
-
-  if (!descriptor || !process) return;
-}
-
-async function submitSmlJob() {
-  const v = views.find(v => v.id === smlViewId);
-  const s = v && v.series.find(s => s.id === smlSeriesId);
-  if (!s) return;
-
-  const descriptor = s.name.replace(/\.csv$/i, '');
-  const process    = getSelectedProcess();
-  const errEl      = document.getElementById('smlError');
-  errEl.classList.remove('show');
-
-  if (!process) { errEl.textContent = 'Select a process (Binary or Units).'; errEl.classList.add('show'); return; }
-
-  const headers      = (s.headers || []).slice(1);
-  const measurements = headers.join(',');
-  const slug         = v.slug || v.title.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-  const btn = document.getElementById('smlSubmitBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-top-color:#111;border-color:rgba(0,0,0,0.2);border-top-color:#111;"></div> Uploading…';
-
-  try {
-    const res = await fetch('/api/submit-sml', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        series_filename: s.filename,
-        descriptor,
-        process,
-        measurements,
-        slug,
-        custid: getCustomerId(),
-      })
-    });
-    if (!res.ok) {
-      const data = await readErrorBody(res);
-      if (data.password_change_required) {
-        showPasswordChangeBanner();
-        throw new Error('Cognito requires a new password — set one above, then try again.');
-      }
-      if (data.custid_mismatch) {
-        showCustidBanner(data.error);
-        throw new Error('Customer ID mismatch — this job was not submitted.');
-      }
-      throw new Error(data.error || res.statusText);
-    }
-    const result = await res.json();
-    closeModal('smlModal');
-    showToast(`Job submitted: ${result.ini_file}`, 'success');
-  } catch(e) {
-    errEl.textContent = 'Submission failed: ' + e.message;
-    errEl.classList.add('show');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Submit Job`;
-  }
 }
 
 // ── MODALS ─────────────────────────────────────────────
@@ -1658,275 +1358,82 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) closeModal(o.id); });
 });
 
-// ── CUSTOMER ID (read-only — loaded from sml-app.config) ──
+// ── CUSTOMER ID (read-only — loaded from sml-t.config) ──
 let _custid = '';
+let _email  = '';
+let _easterEgg = false;
 function getCustomerId() { return _custid; }
 async function loadCustomerId() {
   try {
     const res = await fetch('/api/config');
     if (res.ok) {
       const data = await res.json();
-      _custid = data.custid || '';
+      _custid    = data.custid    || '';
+      _email     = data.email     || '';
+      _easterEgg = data.easter_egg || false;
       document.getElementById('customerIdLabel').textContent = _custid || '—';
+      if (_easterEgg) showRegisterBanner();
     }
   } catch(e) {
     console.warn('Could not load config:', e);
   }
 }
 
-// ── PASSWORD CHANGE REQUIRED (reactive — never polled) ──
-// Only ever triggered by a failed Submit Job / TSU balance / TSU request
-// response that reports password_change_required: true. No background check.
-async function readErrorBody(res) {
-  try { return await res.json(); }
-  catch {
-    try { return { error: await res.text() }; }
-    catch { return {}; }
-  }
-}
-function showPasswordChangeBanner() {
-  document.getElementById('authBanner').classList.add('show');
-}
-
-// ── CUSTID MISMATCH (reactive — shown when Submit Job reports custid_mismatch) ──
-// Not user-fixable from here: the config's custid was set wrong or the account
-// changed. Stays up until the app is reconfigured (new build) and restarted,
-// so it isn't given a dismiss control.
-function showCustidBanner(detail) {
-  document.getElementById('custidBannerDetail').textContent = detail || '';
-  document.getElementById('custidBanner').classList.add('show');
-}
-function hidePasswordChangeBanner() {
-  document.getElementById('authBanner').classList.remove('show');
-  document.getElementById('authBannerPwError').textContent = '';
-}
-
-async function submitPasswordChange() {
-  const pw1   = document.getElementById('authNewPassword').value;
-  const pw2   = document.getElementById('authNewPasswordConfirm').value;
-  const errEl = document.getElementById('authBannerPwError');
-  const btn   = document.getElementById('authChangePwBtn');
-  errEl.textContent = '';
-
-  if (!pw1) { errEl.textContent = 'Enter a new password.'; return; }
-  if (pw1 !== pw2) { errEl.textContent = 'Passwords do not match.'; return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Setting…';
+async function showRegisterBanner() {
+  // Fetch platform info stored at Easter Egg unlock time
+  let platformOs = '', platformArch = '';
   try {
-    const res = await fetch('/api/auth/change-password', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ new_password: pw1 })
-    });
-    if (!res.ok) throw new Error(await res.text());
-    document.getElementById('authNewPassword').value = '';
-    document.getElementById('authNewPasswordConfirm').value = '';
-    hidePasswordChangeBanner();
-    showToast('Password updated — try your action again', 'success');
-  } catch(e) {
-    errEl.textContent = 'Failed: ' + e.message;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Set new password';
-  }
-}
-
-async function openTsuModal() {
-  // Re-check on click rather than trusting a possibly-stale background load —
-  // this is the actual "invoke the backend" moment for TSU balance/request.
-  await loadTsuBalance();
-  if (_tsuPasswordChangeRequired) {
-    showPasswordChangeBanner();
-    return;
-  }
-  const balance = _tsuBalance;
-  const balEl   = document.getElementById('tsuModalBalance');
-  balEl.textContent = balance !== null ? balance.toLocaleString() + ' TSUs' : 'Not yet funded';
-  balEl.style.color = balance === null ? 'var(--amber)' : balance < 0 ? 'var(--red)' : 'var(--text)';
-  document.getElementById('tsuModalEmail').textContent = _tsuEmail || '(email not configured)';
-  document.getElementById('tsuModalQuantity').value = '500';
-  document.getElementById('tsuModalSuccess').classList.remove('show');
-  document.getElementById('tsuModalError').classList.remove('show');
-  document.getElementById('tsuModalSubmitBtn').disabled = false;
-  document.getElementById('tsuModalSubmitBtn').innerHTML =
-    `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Request TSUs`;
-  openModal('tsuModal');
-}
-
-async function submitTsuModalRequest() {
-  const quantity = parseInt(document.getElementById('tsuModalQuantity').value) || 0;
-  const sucEl    = document.getElementById('tsuModalSuccess');
-  const errEl    = document.getElementById('tsuModalError');
-  sucEl.classList.remove('show'); errEl.classList.remove('show');
-
-  if (quantity <= 0) {
-    errEl.textContent = 'Enter a quantity greater than zero.';
-    errEl.classList.add('show'); return;
-  }
-  const btn = document.getElementById('tsuModalSubmitBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-top-color:#111;border-color:rgba(0,0,0,0.2);"></div> Sending…';
-  try {
-    const res = await fetch('/api/tsu/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantity })
-    });
-    if (!res.ok) {
-      const data = await readErrorBody(res);
-      if (data.password_change_required) {
-        showPasswordChangeBanner();
-        throw new Error('Cognito requires a new password — set one above, then try again.');
-      }
-      throw new Error(data.error || res.statusText);
-    }
-    const data = await res.json();
-    sucEl.textContent = `✓ Invoice requested for ${data.quantity.toLocaleString()} TSUs — sent to ${data.email}`;
-    sucEl.classList.add('show');
-    btn.style.display = 'none';
-    setTimeout(() => {
-      closeModal('tsuModal');
-      showToast(`Invoice sent for ${data.quantity.toLocaleString()} TSUs`, 'success');
-    }, 1500);
-  } catch(e) {
-    errEl.textContent = 'Request failed: ' + e.message;
-    errEl.classList.add('show');
-    btn.disabled = false;
-    btn.innerHTML = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Request TSUs`;
-  }
-}
-
-
-let _tsuBalance = null;
-let _tsuEmail   = '';
-
-function getTsuBalance() { return _tsuBalance; }
-
-let _tsuPasswordChangeRequired = false;
-
-async function loadTsuBalance() {
-  try {
-    const res = await fetch('/api/tsu/balance');
+    const res = await fetch('/api/platform');
     if (res.ok) {
-      const data = await res.json();
-      _tsuBalance = data.balance;
-      _tsuEmail   = data.email || '';
-      _tsuPasswordChangeRequired = !!data.password_change_required;
-      updateTsuBadge();
-      // Note: this can run automatically at page load (badge refresh) — the banner
-      // is only ever shown when the customer actually clicks into the TSU modal
-      // (openTsuModal) or tries to submit something, never from this silent poll.
+      const p = await res.json();
+      platformOs   = p.platform_os   || '';
+      platformArch = p.platform_arch || '';
     }
-  } catch(e) {
-    console.warn('Could not load TSU balance:', e);
-  }
+  } catch(e) {}
+
+  // Build register URL with params
+  const params = new URLSearchParams({ custid: _custid });
+  if (platformOs)   params.set('os',   platformOs);
+  if (platformArch) params.set('arch', platformArch);
+  if (_email)       params.set('email', _email);
+  const registerUrl = `https://fides-ratio.com/decision-machine/register.html?${params.toString()}`;
+
+  const platformText = platformOs && platformArch
+    ? `<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-faint);margin-left:8px;">${platformOs} ${platformArch}</span>`
+    : '';
+
+  const banner = document.createElement('div');
+  banner.id = 'registerBanner';
+  banner.style.cssText = `
+    background: linear-gradient(135deg, rgba(46,126,255,0.08), rgba(45,232,160,0.06));
+    border: 1px solid rgba(46,126,255,0.25); border-radius: var(--radius);
+    padding: 16px 24px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  `;
+  banner.innerHTML = `
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:600;font-size:14px;margin-bottom:3px;">
+        🎉 Training complete — you're ready for SML-App
+      </div>
+      <div style="font-size:12px;color:var(--text-dim);">
+        Register to receive your personalised SML-App installer.${platformText}
+      </div>
+    </div>
+    <a href="${escHtml(registerUrl)}" target="_blank"
+      style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;
+             background:var(--blue);color:#fff;border-radius:var(--radius-sm);
+             font-size:13px;font-weight:600;text-decoration:none;
+             transition:background 0.2s;white-space:nowrap;"
+      onmouseover="this.style.background='#1a6ef5'"
+      onmouseout="this.style.background='var(--blue)'">
+      Register for SML-App →
+    </a>
+  `;
+
+  // Insert before stats bar
+  const statsBar = document.getElementById('statsBar');
+  if (statsBar) statsBar.parentNode.insertBefore(banner, statsBar);
 }
-
-function updateTsuBadge() {
-  const label = document.getElementById('tsuBalanceLabel');
-  if (!label) return;
-  label.textContent = _tsuBalance !== null ? `TSU: ${_tsuBalance.toLocaleString()}` : 'TSU: —';
-  const badge = document.getElementById('tsuBadge');
-  if (badge) badge.style.borderColor = _tsuBalance === 0 ? 'var(--red)' : '';
-}
-
-function updateSmlTsuDisplay(symbolCount) {
-  const summary     = document.getElementById('smlTsuSummary');
-  const requestSec  = document.getElementById('smlTsuRequest');
-  const submitBtn   = document.getElementById('smlSubmitBtn');
-  const requestBtn  = document.getElementById('smlRequestTsuBtn');
-  const costEl      = document.getElementById('smlTsuCost');
-  const balanceEl   = document.getElementById('smlTsuBalance');
-  const afterEl     = document.getElementById('smlTsuAfter');
-  const emailEl     = document.getElementById('smlTsuEmail');
-  const errEl       = document.getElementById('smlError');
-
-  errEl.classList.remove('show');
-  summary.style.display    = 'none';
-  requestSec.style.display = 'none';
-  submitBtn.style.display  = 'none';
-  requestBtn.style.display = 'none';
-
-  // Block: never funded
-  if (_tsuBalance === null) {
-    requestSec.style.display = '';
-    requestBtn.style.display = 'flex';
-    if (emailEl) emailEl.textContent = _tsuEmail || '(email not configured)';
-    document.getElementById('smlTsuRequestSuccess').classList.remove('show');
-    document.getElementById('smlTsuRequestError').classList.remove('show');
-    errEl.textContent = 'No TSUs funded. Request TSUs to submit jobs.';
-    errEl.classList.add('show');
-    return;
-  }
-
-  // Block: overdrawn by more than 100
-  if (_tsuBalance < -100) {
-    errEl.textContent = `Account overdrawn by ${Math.abs(_tsuBalance).toLocaleString()} TSUs. Please contact support to restore access.`;
-    errEl.classList.add('show');
-    return;
-  }
-
-  // Show cost summary
-  const after = _tsuBalance - symbolCount;
-  costEl.textContent    = symbolCount;
-  balanceEl.textContent = _tsuBalance.toLocaleString();
-  afterEl.textContent   = after.toLocaleString();
-  afterEl.style.color   = after < 0 ? 'var(--red)' : 'var(--green)';
-  summary.style.display = '';
-
-  if (_tsuBalance <= 0) {
-    // Zero balance — show request flow, block submit
-    requestSec.style.display = '';
-    requestBtn.style.display = 'flex';
-    if (emailEl) emailEl.textContent = _tsuEmail || '(email not configured)';
-    document.getElementById('smlTsuRequestSuccess').classList.remove('show');
-    document.getElementById('smlTsuRequestError').classList.remove('show');
-  } else {
-    // Positive balance (overdraft allowed) — show submit
-    submitBtn.style.display = 'flex';
-  }
-}
-
-async function submitTsuRequest() {
-  const quantity = parseInt(document.getElementById('smlTsuQuantity').value) || 0;
-  const sucEl    = document.getElementById('smlTsuRequestSuccess');
-  const errEl    = document.getElementById('smlTsuRequestError');
-  sucEl.classList.remove('show'); errEl.classList.remove('show');
-
-  if (quantity <= 0) {
-    errEl.textContent = 'Enter a quantity greater than zero.';
-    errEl.classList.add('show'); return;
-  }
-  const btn = document.getElementById('smlRequestTsuBtn');
-  btn.disabled = true; btn.textContent = 'Sending…';
-  try {
-    const res = await fetch('/api/tsu/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantity })
-    });
-    if (!res.ok) {
-      const data = await readErrorBody(res);
-      if (data.password_change_required) {
-        showPasswordChangeBanner();
-        throw new Error('Cognito requires a new password — set one above, then try again.');
-      }
-      throw new Error(data.error || res.statusText);
-    }
-    const data = await res.json();
-    sucEl.textContent = `✓ Invoice requested for ${data.quantity.toLocaleString()} TSUs — sent to ${data.email}`;
-    sucEl.classList.add('show');
-    btn.style.display = 'none';
-  } catch(e) {
-    errEl.textContent = 'Request failed: ' + e.message;
-    errEl.classList.add('show');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Request TSUs`;
-  }
-}
-
 
 const THEME_KEY = 'sml_theme';
 const moonSVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`;
@@ -1942,7 +1449,6 @@ function loadTheme()   { applyTheme(localStorage.getItem(THEME_KEY) || 'dark'); 
 // ── INIT ───────────────────────────────────────────────
 loadTheme();
 loadCustomerId().then(() => {
-  loadTsuBalance();
   loadAll();
 });
 </script>
