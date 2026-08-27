@@ -59,6 +59,15 @@ WATCH_PATH     = cfg('storage',  'watch_path',     fallback='')
 WATCH_INTERVAL = int(cfg('storage', 'watch_interval', fallback='30'))
 AGENT_INTERVAL = int(cfg('storage', 'agent_interval', fallback='60'))
 
+# Upgrade check — Lambda Function URL for the reused accept→fulfill pipeline.
+# Shared across every customer (not per-region/per-customer like the Cognito
+# fields above), so it's a hardcoded fallback here rather than something
+# baked into each build's sml-app.config individually — same convention as
+# INPUT_BUCKET/OUTPUT_BUCKET. The [upgrade] override still exists for local
+# testing against a different function.
+UPGRADE_TRIGGER_URL = cfg('upgrade', 'trigger_url',
+                           fallback='https://47d76vlmi5lw3oaltus6plfaou0xptgd.lambda-url.us-east-1.on.aws/')
+
 # ── boto3 session — Cognito federated credentials ─────
 # Lazy: no AWS/Cognito call happens at startup. The session is only
 # established the first time something actually needs AWS access (TSU
@@ -516,6 +525,86 @@ def request_tsu():
         logging.error(f'TSU request upload failed: {e}', exc_info=True)
         return jsonify({'error': f'S3 upload failed: {str(e)}'}), 500
     return jsonify({'filename': filename, 'quantity': quantity, 'email': EMAIL}), 200
+
+# ── Upgrade check ──────────────────────────────────────
+# dm-registrations is the same table the accept→fulfill registration pipeline
+# already writes (sml_app_fulfilled_at, status, etc.) — see CLAUDE-architecture.md.
+# upgrade_available is a plain per-custid boolean an operator flips on to
+# target a rollout by region/platform; this app only ever reads and, on
+# request, asks a Lambda to clear it and re-trigger fulfill.
+REGISTRATIONS_TABLE = 'dm-registrations'
+
+def get_upgrade_flag_from_dynamo():
+    """Read this custid's upgrade_available flag from dm-registrations.
+    Returns bool. Lets PasswordChangeRequiredError propagate, same pattern
+    as get_tsu_balance_from_dynamo()."""
+    if not CUSTID:
+        return False
+    try:
+        dynamodb = get_boto_session().resource('dynamodb', region_name='us-east-1')
+        response = dynamodb.Table(REGISTRATIONS_TABLE).get_item(Key={'custid': CUSTID})
+        item     = response.get('Item')
+        return bool(item and item.get('upgrade_available') is True)
+    except PasswordChangeRequiredError:
+        raise
+    except Exception as e:
+        logging.error(f'Upgrade flag lookup failed: {e}', exc_info=True)
+        return False
+
+@app.route('/api/upgrade/status')
+def get_upgrade_status():
+    try:
+        available = get_upgrade_flag_from_dynamo()
+        return jsonify({'upgrade_available': available, 'password_change_required': False})
+    except PasswordChangeRequiredError as e:
+        # Still 200 — passive display endpoint, same convention as /api/tsu/balance.
+        return jsonify({'upgrade_available': False, 'password_change_required': True, 'error': str(e)})
+
+@app.route('/api/upgrade/request', methods=['POST'])
+def request_upgrade():
+    """Ask the upgrade-trigger Lambda to re-emit the same EventBridge event
+    accept already emits on registration, so fulfill rebuilds this custid's
+    package unmodified. The Lambda re-validates upgrade_available itself —
+    this route just gets a Cognito-authenticated request there and surfaces
+    a clear error if the build isn't configured for it yet."""
+    if not CUSTID:
+        abort(400, 'custid not configured')
+    if not UPGRADE_TRIGGER_URL:
+        abort(500, 'Upgrade trigger endpoint not configured for this build.')
+
+    try:
+        get_boto_session()          # ensures a fresh Cognito session
+        with _cognito_lock:
+            access_token = getattr(_cognito_obj, 'access_token', None)
+        if not access_token:
+            raise RuntimeError('No active Cognito session — cannot authorize the upgrade request.')
+    except PasswordChangeRequiredError as e:
+        return jsonify({'error': str(e), 'password_change_required': True}), 401
+    except Exception as e:
+        abort(502, f'Could not reach Cognito to authorize the upgrade request: {e}')
+
+    import urllib.request, urllib.error
+    req = urllib.request.Request(
+        UPGRADE_TRIGGER_URL,
+        method='POST',
+        headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'},
+        data=json.dumps({'custid': CUSTID}).encode('utf-8'),
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode('utf-8', errors='ignore')
+        try:
+            detail = json.loads(detail).get('error', detail)
+        except Exception:
+            pass
+        abort(e.code, detail or 'Upgrade request failed')
+    except Exception as e:
+        abort(502, f'Could not reach the upgrade service: {e}')
+
+    logging.info(f'Upgrade requested for custid={CUSTID}')
+    return jsonify(body)
 
 
 @app.route('/api/views', methods=['GET'])
