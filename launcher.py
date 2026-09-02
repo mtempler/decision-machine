@@ -32,21 +32,26 @@ else:
 # Change to BASE_DIR so relative paths in server.py resolve correctly
 os.chdir(str(BASE_DIR))
 
-# Copy bundled HTML into BASE_DIR on every launch (always up to date)
-# Only sml-app.config is preserved if already present (user-personalised)
-for filename in ('index.html', 'measurements.html', 'job-plot.html', 'pdfs-table.html', 'setup.html'):
-    src  = BUNDLE_DIR / filename
-    dest = BASE_DIR   / filename
-    if src.exists():
-        import shutil
-        shutil.copy2(str(src), str(dest))
-
-# Config only copied if not already present (personalised per tester)
-config_src  = BUNDLE_DIR / 'sml-app.config'
-config_dest = BASE_DIR   / 'sml-app.config'
-if config_src.exists() and not config_dest.exists():
+# Copy bundled HTML + region config into BASE_DIR on every launch (always
+# up to date). Only meaningful when frozen — when running as a plain script,
+# BUNDLE_DIR and BASE_DIR are the same directory, so there is nothing to
+# refresh from and shutil.copy2 would raise SameFileError trying to copy a
+# file onto itself.
+# Only sml-app.config is preserved if already present (user-personalised).
+if BUNDLE_DIR != BASE_DIR:
     import shutil
-    shutil.copy2(str(config_src), str(config_dest))
+    for filename in ('index.html', 'measurements.html', 'job-plot.html',
+                      'dm-plot.html', 'pdfs-table.html', 'setup.html',
+                      'cognito-regions.json'):
+        src  = BUNDLE_DIR / filename
+        dest = BASE_DIR   / filename
+        if src.exists():
+            shutil.copy2(str(src), str(dest))
+
+    config_src  = BUNDLE_DIR / 'sml-app.config'
+    config_dest = BASE_DIR   / 'sml-app.config'
+    if config_src.exists() and not config_dest.exists():
+        shutil.copy2(str(config_src), str(config_dest))
 
 # ── Open browser ──────────────────────────────────────
 def open_browser():

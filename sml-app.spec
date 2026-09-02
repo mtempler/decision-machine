@@ -16,8 +16,13 @@ a = Analysis(
         ('index.html',        '.'),
         ('measurements.html', '.'),
         ('job-plot.html',     '.'),
+        ('dm-plot.html',      '.'),
         ('pdfs-table.html',   '.'),
         ('setup.html',        '.'),
+        # Region config — must ship for /api/regions (and setup.html's
+        # region dropdown) to have anything to read; launcher.py refreshes
+        # it into BASE_DIR on every launch, same as the HTML above.
+        ('cognito-regions.json', '.'),
     ],
     hiddenimports=[
         # Flask internals

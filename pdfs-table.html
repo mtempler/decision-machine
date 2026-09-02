@@ -191,6 +191,10 @@
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
       <span id="customerIdLabel"></span>
     </div>
+    <a class="back-btn" id="plotLink" href="#" title="View the probability distribution chart">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
+      View Distribution Plot
+    </a>
     <button class="theme-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
       <span id="themeIcon"></span>
     </button>
@@ -217,6 +221,7 @@ async function init() {
   document.getElementById('headerTitle').textContent = jobFile;
   document.getElementById('headerSub').textContent   = 'Decision Machine Output';
   document.title = 'SML — ' + jobFile;
+  document.getElementById('plotLink').href = 'dm-plot.html?file=' + encodeURIComponent(jobFile);
 
   try {
     const res = await fetch('/api/jobfiles/' + encodeURIComponent(jobFile) + '/csv');
@@ -263,12 +268,20 @@ function parseCSVRows(text) {
 }
 
 // ── PARSE + RENDER ─────────────────────────────────────
+// DM PDFs output has no header row — every row (including the first) is
+// real data. Field meanings confirmed from dm-plot.html's own parser:
+// symbol, bin/step, probability, demand.
+const FIXED_HEADERS = ['Symbol', 'Bin', 'Probability', 'Demand'];
+
 function parseAndRender(text) {
   const rows = parseCSVRows(text);
   if (rows.length < 1) { showError('File is empty.'); return; }
 
-  headers = rows[0];
-  allRows = rows.slice(1);
+  const width = rows[0].length;
+  headers = (width === FIXED_HEADERS.length)
+    ? FIXED_HEADERS
+    : Array.from({length: width}, (_, i) => `Column ${i + 1}`);
+  allRows = rows;
 
   // Pad short rows
   allRows.forEach(r => { while (r.length < headers.length) r.push(''); });

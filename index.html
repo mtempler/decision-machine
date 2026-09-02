@@ -1102,7 +1102,7 @@ function renderParallelGrid() {
     html += `<div class="parallel-row">`;
     html += `<div class="prow-cell cell-views">${renderCardInner(v)}</div>`;
     html += jobCellHtml(slug, smlBySlug,  smlArchivedBySlug,  '/job-plot.html',   'cell-sml',  'No SML outputs yet');
-    html += jobCellHtml(slug, pdfsBySlug, pdfsArchivedBySlug, '/pdfs-table.html', 'cell-pdfs', 'No DM outputs yet');
+    html += jobCellHtml(slug, pdfsBySlug, pdfsArchivedBySlug, '/dm-plot.html', 'cell-pdfs', 'No DM outputs yet');
     html += `</div>`;
   });
 
