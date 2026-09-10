@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SML — Distribution Plot</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06090f; --surface: #0d1420; --surface2: #111927;
+    --border: #1e2d45; --border2: #253650;
+    --blue: #2e7eff; --blue-glow: rgba(46,126,255,0.15);
+    --text: #e8edf5; --text-dim: #8a9ab5; --text-faint: #4a5c78;
+    --green: #2de8a0; --red: #ff4d6a; --amber: #ffb347;
+    --amber-glow: rgba(255,179,71,0.12);
+    --radius: 14px; --radius-sm: 8px;
+  }
+  :root.light {
+    --bg: #f0f4fb; --surface: #ffffff; --surface2: #e8eef8;
+    --border: #d0daea; --border2: #b8c8df;
+    --blue: #1a6ef5; --blue-glow: rgba(26,110,245,0.12);
+    --text: #0f1b2d; --text-dim: #4a6080; --text-faint: #8a9eb8;
+    --green: #0ea572; --red: #e8273f; --amber: #d97706;
+    --amber-glow: rgba(217,119,6,0.1);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; transition: background-color 0.2s, border-color 0.2s, color 0.2s; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 500px;
+    background: radial-gradient(ellipse, rgba(255,179,71,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(6,9,15,0.88); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); padding: 0 40px;
+  }
+  :root.light header { background: rgba(240,244,251,0.92); }
+  .header-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 16px; height: 64px; }
+  .back-btn {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-dim); font-size: 14px;
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  }
+  .back-btn:hover { color: var(--text); border-color: var(--border); }
+  .back-btn svg { width: 16px; height: 16px; }
+  .header-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+  .header-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .header-title { font-family: 'DM Serif Display', serif; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px; }
+  .header-sub { font-size: 12px; color: var(--text-faint); font-family: 'DM Mono', monospace; }
+  .logo { margin-left: auto; font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--text-dim); text-decoration: none; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 10px var(--amber); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 8px var(--amber); } 50% { box-shadow: 0 0 20px var(--amber); } }
+  .customer-id-badge {
+    display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); font-size: 12px; font-family: 'DM Mono', monospace;
+    max-width: 160px; overflow: hidden;
+  }
+  .customer-id-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .theme-btn {
+    width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-faint); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .theme-btn:hover { border-color: var(--border2); color: var(--text); }
+
+  /* ── MAIN ── */
+  main { max-width: 1400px; margin: 0 auto; padding: 40px 40px 80px; position: relative; z-index: 1; }
+
+  /* ── DM BADGE ── */
+  .dm-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--amber-glow); border: 1px solid rgba(255,179,71,0.25);
+    border-radius: 100px; padding: 4px 12px 4px 8px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--amber); margin-bottom: 24px;
+  }
+  .dm-badge svg { width: 12px; height: 12px; }
+
+  /* ── SYMBOL SELECTOR ── */
+  .symbol-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .symbol-label { font-size: 12px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  .symbol-btn {
+    padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-dim); font-size: 13px;
+    font-family: 'DM Mono', monospace; cursor: pointer; transition: all 0.15s;
+  }
+  .symbol-btn:hover { border-color: var(--border2); color: var(--text); }
+  .symbol-btn.active { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
+
+  /* ── STATS ROW ── */
+  .stats-row { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 22px; min-width: 140px; transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 6px; }
+  .stat-card-value { font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 500; color: var(--text); }
+  .stat-card-sub { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+
+  /* ── CHART CARD ── */
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; position: relative; margin-bottom: 24px;
+  }
+  .chart-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--amber), rgba(255,179,71,0.3), transparent);
+  }
+  .chart-header {
+    padding: 18px 24px 14px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .chart-title { font-family: 'DM Serif Display', serif; font-size: 17px; }
+  .chart-legend { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-dim); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .chart-canvas-wrap { position: relative; padding: 0 24px 24px; }
+  canvas { width: 100%; display: block; cursor: crosshair; }
+
+  /* ── TOOLTIP ── */
+  .chart-tooltip {
+    position: fixed; pointer-events: none; z-index: 200;
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); padding: 10px 14px;
+    font-size: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    opacity: 0; transition: opacity 0.1s; min-width: 160px;
+  }
+  .chart-tooltip.visible { opacity: 1; }
+  .tooltip-step { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-faint); margin-bottom: 6px; }
+  .tooltip-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  .tooltip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tooltip-label { color: var(--text-dim); flex: 1; }
+  .tooltip-val { font-family: 'DM Mono', monospace; color: var(--text); font-weight: 500; }
+
+  /* ── LOADING / ERROR ── */
+  .loading { display: flex; align-items: center; justify-content: center; min-height: 400px; flex-direction: column; gap: 14px; color: var(--text-faint); }
+  .spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-page { display: flex; align-items: center; justify-content: center; min-height: 60vh; flex-direction: column; gap: 16px; color: var(--text-dim); text-align: center; }
+  .error-page h2 { font-family: 'DM Serif Display', serif; font-size: 28px; }
+
+  @media (max-width: 768px) {
+    header { padding: 0 16px; }
+    main { padding: 20px 16px 60px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <button class="back-btn" onclick="window.location.href='/'">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Dashboard
+    </button>
+    <div class="header-divider"></div>
+    <div class="header-info">
+      <div class="header-title" id="headerTitle">Loading…</div>
+      <div class="header-sub" id="headerSub">Decision Machine · Distribution Plot</div>
+    </div>
+    <div class="customer-id-badge" id="customerIdBadge" style="display:none">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      <span id="customerIdLabel"></span>
+    </div>
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle theme"><span id="themeIcon"></span></button>
+    <a href="/" class="logo">
+      <div class="logo-dot"></div>
+      Decision Machine
+    </a>
+  </div>
+</header>
+
+<main>
+  <div id="mainContent">
+    <div class="loading"><div class="spinner"></div><span>Loading distribution…</span></div>
+  </div>
+</main>
+
+<div class="chart-tooltip" id="chartTooltip"></div>
+
+<script>
+// ── STATE ─────────────────────────────────────────────
+const params  = new URLSearchParams(window.location.search);
+const jobFile = params.get('file');
+
+// parsed data: Map<symbol, { steps[], prob[], demand[] }>
+let allData      = new Map();
+let activeSymbol = null;
+
+// ── INIT ──────────────────────────────────────────────
+async function init() {
+  if (!jobFile) { showError('No file specified.'); return; }
+
+  document.getElementById('headerTitle').textContent = jobFile;
+  document.title = 'DM — ' + jobFile;
+
+  // Load customer badge
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    if (cfg.custid) {
+      document.getElementById('customerIdLabel').textContent = cfg.custid;
+      document.getElementById('customerIdBadge').style.display = 'flex';
+    }
+  } catch(e) {}
+
+  try {
+    const res = await fetch('/api/jobfiles/' + encodeURIComponent(jobFile) + '/csv');
+    if (!res.ok) {
+      showError(res.status === 404
+        ? 'File not found. Make sure it exists in the jobs/ directory.'
+        : 'Failed to load file (HTTP ' + res.status + ').');
+      return;
+    }
+    const text = await res.text();
+    parseAndRender(text);
+  } catch(e) { showError('Could not load file: ' + e.message); }
+}
+
+// ── CSV PARSER ────────────────────────────────────────
+function parseCSVRows(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let i = 0, n = text.length;
+  while (i < n) {
+    while (i < n && (text[i] === '\r' || text[i] === '\n')) i++;
+    if (i >= n) break;
+    const row = [];
+    while (i < n) {
+      let field = '';
+      if (text[i] === '"') {
+        i++;
+        while (i < n) {
+          if (text[i] === '"' && text[i+1] === '"') { field += '"'; i += 2; }
+          else if (text[i] === '"') { i++; break; }
+          else { field += text[i++]; }
+        }
+        while (i < n && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') i++;
+      } else {
+        while (i < n && text[i] !== ',' && text[i] !== '\r' && text[i] !== '\n') field += text[i++];
+      }
+      row.push(field.trim());
+      if (i < n && text[i] === ',') i++; else break;
+    }
+    while (i < n && (text[i] === '\r' || text[i] === '\n')) i++;
+    if (row.length && !row.every(f => f === '')) rows.push(row);
+  }
+  return rows;
+}
+
+// ── PARSE ─────────────────────────────────────────────
+function parseAndRender(text) {
+  const rows = parseCSVRows(text);
+  if (!rows.length) { showError('File is empty.'); return; }
+
+  allData = new Map();
+  let pendingMean = null;  // set by a bare single-value line, applies to the next symbol block
+
+  for (const row of rows) {
+    // A row with no commas — just one field that parses as a number — is a
+    // mean header preceding that symbol's data, not a data row itself. Older
+    // files never have these lines at all, so pendingMean simply stays null
+    // and the mean is omitted for that symbol — no format flag needed.
+    if (row.length === 1) {
+      const v = parseFloat(row[0]);
+      if (!isNaN(v)) { pendingMean = v; continue; }
+    }
+
+    const sym    = row[0] || 'Unknown';
+    const step   = parseInt(row[1], 10);
+    const prob   = parseFloat(row[2]);
+    const demand = parseFloat(row[3]);
+    if (isNaN(step)) continue;
+    if (!allData.has(sym)) {
+      allData.set(sym, { steps: [], prob: [], demand: [], mean: pendingMean });
+      pendingMean = null;  // consumed — doesn't leak into a later block
+    }
+    const d = allData.get(sym);
+    d.steps.push(step);
+    d.prob.push(isNaN(prob)   ? 0 : prob);
+    d.demand.push(isNaN(demand) ? 0 : demand);
+  }
+
+  if (!allData.size) { showError('No valid data rows found.'); return; }
+
+  activeSymbol = allData.keys().next().value;
+  renderPage();
+}
+
+// ── DERIVED STATS ─────────────────────────────────────
+function computeStats(sym) {
+  const d = allData.get(sym);
+
+  // Expected value: step where demand distribution is maximum
+  let evStep = d.steps[0], evMax = -Infinity;
+  for (let i = 0; i < d.demand.length; i++) {
+    if (d.demand[i] > evMax) { evMax = d.demand[i]; evStep = d.steps[i]; }
+  }
+
+  // 99.9th percentile: cumulative prob >= 0.999
+  let cumProb = 0, pct999Step = d.steps[d.steps.length - 1];
+  for (let i = 0; i < d.prob.length; i++) {
+    cumProb += d.prob[i];
+    if (cumProb >= 0.999) { pct999Step = d.steps[i]; break; }
+  }
+
+  return { evStep, pct999Step, mean: d.mean, steps: d.steps.length };
+}
+
+// ── RENDER PAGE ───────────────────────────────────────
+function renderPage() {
+  const symbols = [...allData.keys()];
+  const stats   = computeStats(activeSymbol);
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="dm-badge">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+      Decision Machine · Probability Distribution
+    </div>
+
+    ${symbols.length > 1 ? `
+    <div class="symbol-row">
+      <span class="symbol-label">Symbol</span>
+      ${symbols.map(s => `<button class="symbol-btn ${s === activeSymbol ? 'active' : ''}" onclick="switchSymbol('${escHtml(s)}')">${escHtml(s)}</button>`).join('')}
+    </div>` : ''}
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-card-label">Symbol</div>
+        <div class="stat-card-value">${escHtml(activeSymbol)}</div>
+        <div class="stat-card-sub">${stats.steps} steps</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Average (origin)</div>
+        <div class="stat-card-value">${stats.mean != null ? stats.mean.toFixed(2) : '—'}</div>
+        <div class="stat-card-sub">mean of time-series</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Expected Value</div>
+        <div class="stat-card-value">${stats.evStep - 1}</div>
+        <div class="stat-card-sub">units of demand</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">99.9th Percentile</div>
+        <div class="stat-card-value">${stats.pct999Step - 1}</div>
+        <div class="stat-card-sub">units of demand</div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">PD and Demand Distribution — ${escHtml(activeSymbol)}</div>
+        <div class="chart-legend">
+          <div class="legend-item">
+            <div class="legend-dot" style="background:#ff4d6a"></div>
+            <span>Probability Dist</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:#2e7eff"></div>
+            <span>Expected Demand</span>
+          </div>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="dmChart"></canvas>
+      </div>
+    </div>
+  `;
+
+  drawChart();
+}
+
+// ── CHART ─────────────────────────────────────────────
+function drawChart() {
+  const canvas = document.getElementById('dmChart');
+  if (!canvas) return;
+  const d = allData.get(activeSymbol);
+
+  const DPR = window.devicePixelRatio || 1;
+  const W   = canvas.parentElement.offsetWidth;
+  const H   = Math.max(380, Math.round(W * 0.42));
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+
+  const isLight = document.documentElement.classList.contains('light');
+  const gridCol  = isLight ? 'rgba(0,0,0,0.08)'  : 'rgba(255,255,255,0.06)';
+  const labelCol = isLight ? '#4a6080'            : '#4a5c78';
+  const textCol  = isLight ? '#0f1b2d'            : '#e8edf5';
+
+  // Truncate at cumulative probability > 0.99
+  let cumProb = 0, cutoff = d.steps.length - 1;
+  for (let i = 0; i < d.prob.length; i++) {
+    cumProb += d.prob[i];
+    if (cumProb > 0.999) { cutoff = i; break; }
+  }
+  const steps  = d.steps.slice(0, cutoff + 1);
+  const prob   = d.prob.slice(0, cutoff + 1);
+  const demand = d.demand.slice(0, cutoff + 1);
+  const n      = steps.length;
+
+  const PAD = { top: 32, right: 72, bottom: 56, left: 72 };
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top  - PAD.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Scales — derived from truncated data
+  const probMax   = Math.max(...prob,   0.001);
+  const demandMax = Math.max(...demand, 0.001);
+
+  function xPos(i) { return PAD.left + (i / (n - 1)) * cW; }
+  function yPosLeft(v)  { return PAD.top + cH - (v / demandMax) * cH; }
+  function yPosRight(v) { return PAD.top + cH - (v / probMax)   * cH; }
+
+  // Grid lines (6)
+  const GRID = 6;
+  ctx.strokeStyle = gridCol;
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= GRID; g++) {
+    const y = PAD.top + (g / GRID) * cH;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+  }
+
+  // Left Y-axis labels (demand)
+  ctx.font = `11px 'DM Mono', monospace`;
+  ctx.fillStyle = '#2e7eff';
+  ctx.textAlign = 'right';
+  for (let g = 0; g <= GRID; g++) {
+    const v = demandMax * (1 - g / GRID);
+    const y = PAD.top + (g / GRID) * cH;
+    ctx.fillText(fmtAxis(v), PAD.left - 8, y + 4);
+  }
+
+  // Right Y-axis labels (probability)
+  ctx.fillStyle = '#ff4d6a';
+  ctx.textAlign = 'left';
+  for (let g = 0; g <= GRID; g++) {
+    const v = probMax * (1 - g / GRID);
+    const y = PAD.top + (g / GRID) * cH;
+    ctx.fillText(fmtAxis(v), PAD.left + cW + 8, y + 4);
+  }
+
+  // X-axis labels (step numbers — sample ~8)
+  ctx.fillStyle = labelCol;
+  ctx.textAlign = 'center';
+  const xTicks = Math.min(8, n);
+  for (let t = 0; t <= xTicks; t++) {
+    const i = Math.round((t / xTicks) * (n - 1));
+    const x = xPos(i);
+    ctx.fillText(String(steps[i] - 1), x, H - PAD.bottom + 18);
+  }
+
+  // X-axis label
+  ctx.fillStyle = labelCol;
+  ctx.font = `12px 'DM Sans', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('units of demand', PAD.left + cW / 2, H - 8);
+
+  // Left axis title
+  ctx.save();
+  ctx.translate(16, PAD.top + cH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#2e7eff';
+  ctx.font = `11px 'DM Sans', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('Probability × Demand', 0, 0);
+  ctx.restore();
+
+  // Right axis title
+  ctx.save();
+  ctx.translate(W - 10, PAD.top + cH / 2);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = '#ff4d6a';
+  ctx.font = `11px 'DM Sans', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('Probability', 0, 0);
+  ctx.restore();
+
+  // ── Draw series: dashed line then dots ──────────────
+  function drawSeries(values, yFn, color) {
+    // Dashed connecting line
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.globalAlpha = 0.5;
+    values.forEach((v, i) => {
+      const x = xPos(i), y = yFn(v);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    // Points
+    values.forEach((v, i) => {
+      const x = xPos(i), y = yFn(v);
+      ctx.beginPath();
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    });
+  }
+
+  drawSeries(demand, yPosLeft,  '#2e7eff');
+  drawSeries(prob,   yPosRight, '#ff4d6a');
+
+  // ── Expected value vertical line ─────────────────────
+  const stats  = computeStats(activeSymbol);
+  const evIdx  = steps.indexOf(stats.evStep);
+  if (evIdx >= 0) {
+    const ex = xPos(evIdx);
+    ctx.beginPath();
+    ctx.strokeStyle = isLight ? 'rgba(180,40,40,0.5)' : 'rgba(255,77,106,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.moveTo(ex, PAD.top);
+    ctx.lineTo(ex, PAD.top + cH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Label
+    ctx.fillStyle = isLight ? '#e8273f' : '#ff4d6a';
+    ctx.font = `bold 11px 'DM Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(String(stats.evStep - 1), ex, PAD.top + cH + 36);
+
+    // "Expected Value" rotated label
+    ctx.save();
+    ctx.translate(ex - 10, PAD.top + cH * 0.55);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = isLight ? 'rgba(232,39,63,0.7)' : 'rgba(255,77,106,0.6)';
+    ctx.font = `11px 'DM Sans', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('Expected Value', 0, 0);
+    ctx.restore();
+  }
+
+  // ── 99.9th percentile vertical line ──────────────────
+  const p999Idx = steps.indexOf(stats.pct999Step);
+  if (p999Idx >= 0) {
+    const px = xPos(p999Idx);
+    ctx.beginPath();
+    ctx.strokeStyle = isLight ? 'rgba(100,100,100,0.35)' : 'rgba(200,200,200,0.25)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.moveTo(px, PAD.top);
+    ctx.lineTo(px, PAD.top + cH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Box label
+    const lbl = '99.9 percentile';
+    ctx.font = `10px 'DM Sans', sans-serif`;
+    const tw  = ctx.measureText(lbl).width;
+    const bx  = Math.min(px + 6, W - PAD.right - tw - 10);
+    const by  = PAD.top + 10;
+    ctx.fillStyle = isLight ? 'rgba(240,244,251,0.9)' : 'rgba(13,20,32,0.85)';
+    ctx.strokeStyle = isLight ? '#d0daea' : '#1e2d45';
+    ctx.lineWidth = 1;
+    roundRect(ctx, bx - 4, by - 12, tw + 8, 18, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = labelCol;
+    ctx.textAlign = 'left';
+    ctx.fillText(lbl, bx, by + 1);
+  }
+
+  // ── Hover ─────────────────────────────────────────────
+  const tooltip = document.getElementById('chartTooltip');
+  let lastI = -1;
+
+  function onMove(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (mx < PAD.left || mx > W - PAD.right || my < PAD.top || my > H - PAD.bottom) {
+      tooltip.classList.remove('visible'); lastI = -1; return;
+    }
+    const idx = Math.max(0, Math.min(n - 1, Math.round(((mx - PAD.left) / cW) * (n - 1))));
+    if (idx !== lastI) {
+      lastI = idx;
+      drawChart(); // redraw clean
+      const hx = xPos(idx);
+      // Crosshair
+      ctx.beginPath(); ctx.strokeStyle = 'rgba(200,200,200,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+      ctx.moveTo(hx, PAD.top); ctx.lineTo(hx, PAD.top + cH); ctx.stroke(); ctx.setLineDash([]);
+      // Highlight dots
+      [[demand[idx], yPosLeft,  '#2e7eff'],
+       [prob[idx],   yPosRight, '#ff4d6a']].forEach(([v, yFn, col]) => {
+        ctx.beginPath(); ctx.arc(hx, yFn(v), 6, 0, Math.PI * 2);
+        ctx.fillStyle = col; ctx.fill();
+        ctx.strokeStyle = isLight ? '#fff' : '#06090f'; ctx.lineWidth = 2; ctx.stroke();
+      });
+      tooltip.innerHTML = `
+        <div class="tooltip-step">Step ${steps[idx] - 1}</div>
+        <div class="tooltip-row">
+          <div class="tooltip-dot" style="background:#2e7eff"></div>
+          <span class="tooltip-label">Expected Demand</span>
+          <span class="tooltip-val">${demand[idx].toFixed(4)}</span>
+        </div>
+        <div class="tooltip-row">
+          <div class="tooltip-dot" style="background:#ff4d6a"></div>
+          <span class="tooltip-label">Probability Dist</span>
+          <span class="tooltip-val">${prob[idx].toFixed(4)}</span>
+        </div>`;
+    }
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top  = (e.clientY - 20) + 'px';
+    tooltip.classList.add('visible');
+  }
+
+  canvas.onmousemove  = onMove;
+  canvas.onmouseleave = () => { tooltip.classList.remove('visible'); lastI = -1; };
+}
+
+// ── HELPERS ───────────────────────────────────────────
+function fmtAxis(v) {
+  if (v === 0) return '0';
+  if (v < 0.001) return v.toExponential(1);
+  if (v < 0.01)  return v.toFixed(4);
+  if (v < 0.1)   return v.toFixed(3);
+  return v.toFixed(2);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x + r, y + h); ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y + r); ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+function switchSymbol(sym) {
+  activeSymbol = sym;
+  renderPage();
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showError(msg) {
+  document.getElementById('headerTitle').textContent = 'Error';
+  document.getElementById('mainContent').innerHTML = `
+    <div class="error-page">
+      <h2>Oops</h2>
+      <p style="color:var(--text-faint)">${escHtml(msg)}</p>
+      <a href="/" style="color:var(--amber);font-size:14px;margin-top:8px">← Back to Dashboard</a>
+    </div>`;
+}
+
+// ── THEME ─────────────────────────────────────────────
+const moonSVG = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`;
+const sunSVG  = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m8.66-9h-1M4.34 12h-1m15.07-6.07-.7.7M6.34 17.66l-.7.7m12.02 0-.7-.7M6.34 6.34l-.7-.7M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>`;
+function applyTheme(t) {
+  if (t === 'light') { document.documentElement.classList.add('light'); document.getElementById('themeIcon').innerHTML = moonSVG; }
+  else               { document.documentElement.classList.remove('light'); document.getElementById('themeIcon').innerHTML = sunSVG; }
+  localStorage.setItem('sml_theme', t);
+}
+function toggleTheme() {
+  applyTheme(document.documentElement.classList.contains('light') ? 'dark' : 'light');
+  if (activeSymbol) drawChart(); // redraw with new theme colours
+}
+function loadTheme() { applyTheme(localStorage.getItem('sml_theme') || 'dark'); }
+
+// ── RESIZE ────────────────────────────────────────────
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (activeSymbol) drawChart(); }, 150);
+});
+
+loadTheme();
+init();
+</script>
+</body>
+</html>
