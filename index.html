@@ -854,7 +854,7 @@
       <h2 style="margin:0;">Request TSUs</h2>
     </div>
     <p style="font-size:13px;color:var(--text-dim);line-height:1.6;margin-bottom:20px;padding-left:40px;">
-      One TSU processes one time-series with fewer than 250 timestamps. Each TSU costs <strong>$0.10 USD</strong>. An invoice will be sent to your registered email.
+      One TSU processes one time-series with up to 250 timestamps. Each TSU costs <strong>$0.10 USD</strong>. An invoice will be sent to your registered email.
     </p>
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;margin-bottom:18px;">
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint);margin-bottom:4px;">Current Balance</div>
@@ -1191,6 +1191,7 @@ async function deleteArchivedFile(filename) {
 
 async function deleteErrorFile(filename) {
   try {
+    const res = await fetch('/api/errorfiles/' + encodeURIComponent(filename) + '/delete', { method: 'POST' });
     if (!res.ok) throw new Error(await res.text());
     errorfiles = errorfiles.filter(f => f.filename !== filename);
     renderAll();
@@ -1398,8 +1399,9 @@ async function openSmlModal(viewId, seriesId) {
   document.getElementById('smlProcessDM').value       = '';
   document.getElementById('smlError').classList.remove('show');
 
-  // TSU cost = number of symbols
-  updateSmlTsuDisplay(headers.length);
+  // TSU cost = columns × TSUs per column; one TSU covers up to 250 timestamps
+  const tsuPerCol = Math.max(1, Math.ceil((s.length || 0) / 250));
+  updateSmlTsuDisplay(headers.length * tsuPerCol);
 
   updateSmlPreview();
   openModal('smlModal');
