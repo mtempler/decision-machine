@@ -697,7 +697,7 @@
     <h2>Upload Time-Series</h2>
     <div class="upload-modal-body">
       <p style="font-size:13px;color:var(--text-dim);line-height:1.6;">
-        Upload a <strong>CSV file</strong>. First column = <strong>dates</strong> (YYYY-MM-DD). All other columns are numeric measurements.
+        Upload a <strong>CSV file</strong>. First column = <strong>dates</strong> (UTC: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS). All other columns are numeric measurements.
       </p>
       <div class="upload-drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
@@ -907,6 +907,42 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// ── UTC timestamps ─────────────────────────────────────────
+// Accepted: YYYY-MM-DD (midnight UTC) or YYYY-MM-DD[ T]H:MM[:SS] with optional trailing Z.
+const TS_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?Z?)?$/;
+function tsParse(s) {                       // → epoch ms (UTC) or NaN
+  const m = TS_RE.exec(String(s).trim());
+  if (!m) return NaN;
+  const y = +m[1], mo = +m[2], d = +m[3], h = +(m[4] || 0), mi = +(m[5] || 0), sec = +(m[6] || 0);
+  if (mo < 1 || mo > 12 || d < 1 || h > 23 || mi > 59 || sec > 59) return NaN;
+  const t = Date.UTC(y, mo - 1, d, h, mi, sec), c = new Date(t);
+  return (c.getUTCMonth() === mo - 1 && c.getUTCDate() === d) ? t : NaN;
+}
+function tsHasTime(s) { return /[ T]\d/.test(String(s)); }
+function tsPad(n) { return String(n).padStart(2, '0'); }
+function tsDisplay(s) {                     // full UTC timestamp for tooltips / tables
+  const t = tsParse(s);
+  if (isNaN(t) || !tsHasTime(s)) return String(s);
+  const d = new Date(t);
+  return `${d.getUTCFullYear()}-${tsPad(d.getUTCMonth()+1)}-${tsPad(d.getUTCDate())} ` +
+         `${tsPad(d.getUTCHours())}:${tsPad(d.getUTCMinutes())}:${tsPad(d.getUTCSeconds())} UTC`;
+}
+// X-axis label chosen from the data's time span. dateFmt formats the date-only case.
+function tsAxisLabel(s, spanMs, dateFmt) {
+  const t = tsParse(s);
+  if (isNaN(t) || !tsHasTime(s)) return dateFmt(String(s));
+  const d = new Date(t), DAY = 86400000;
+  const hm = `${tsPad(d.getUTCHours())}:${tsPad(d.getUTCMinutes())}`;
+  if (spanMs < 2 * DAY)  return hm;
+  if (spanMs < 90 * DAY) return `${tsPad(d.getUTCMonth()+1)}-${tsPad(d.getUTCDate())} ${hm}`;
+  return dateFmt(String(s));
+}
+function tsSpan(dates) {
+  if (!dates.length) return 0;
+  const a = tsParse(dates[0]), b = tsParse(dates[dates.length - 1]);
+  return (isNaN(a) || isNaN(b)) ? 0 : Math.abs(b - a);
+}
+
 // ── STATE ──────────────────────────────────────────────
 let views         = [];
 let jobfiles      = [];
@@ -1640,7 +1676,7 @@ function parseAndValidateCSV(text, filename) {
     const cols = rows[i];
     while (cols.length < headers.length) cols.push('');
     cols.length = headers.length;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(cols[0])) { showUploadError(`Row ${i+1}: invalid date "${cols[0]}". Use YYYY-MM-DD.`); return; }
+    if (isNaN(tsParse(cols[0]))) { showUploadError(`Row ${i+1}: invalid timestamp "${cols[0]}". Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS (UTC).`); return; }
     dates.push(cols[0]);
     for (let j = 0; j < dataHeaders.length; j++) {
       const val = cols[j+1];

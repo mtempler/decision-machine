@@ -908,8 +908,20 @@ def dismiss_all_errorfiles():
 _INVALID_VALUES  = {'nan', 'inf', '-inf', '+inf'}
 _VALID_HEADER_RE = re.compile(r'^[A-Za-z0-9_ \-\.]+$')
 
+# Timestamps are UTC. Accepted: YYYY-MM-DD, or YYYY-MM-DD[ T]H:MM[:SS] with optional trailing Z.
+_TS_RE = re.compile(r'^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?Z?)?$')
+
+def _valid_timestamp(s):
+    m = _TS_RE.match(s)
+    if not m: return False
+    y, mo, d, h, mi, sec = m.groups()
+    try:
+        datetime(int(y), int(mo), int(d), int(h or 0), int(mi or 0), int(sec or 0))
+    except ValueError:
+        return False
+    return True
+
 def parse_csv_meta(path):
-    DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
     with open(path, newline='', encoding='utf-8-sig') as fh:
         rows = [r for r in csv.reader(fh) if any(c.strip() for c in r)]
     if len(rows) < 2: raise ValueError('Need header + at least one data row.')
@@ -925,7 +937,8 @@ def parse_csv_meta(path):
     dates = []
     for i, row in enumerate(rows[1:], 2):
         d = row[0].strip() if row else ''
-        if not DATE_RE.match(d): raise ValueError(f'Row {i}: bad date "{d}".')
+        if not _valid_timestamp(d):
+            raise ValueError(f'Row {i}: bad timestamp "{d}". Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS (UTC).')
         dates.append(d)
         # Check numeric columns for NaN, inf, and empty cells
         for j, col_name in enumerate(headers[1:], 1):
